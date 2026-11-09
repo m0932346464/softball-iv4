@@ -109,6 +109,8 @@ button.sm,label.sm{min-height:30px;padding:3px 10px;font-size:12px;cursor:pointe
 .imp-card b{font-size:14px}.imp-card .note{font-size:12px}
 .imp-map td,.imp-map th,.imp-pa td,.imp-pa th{padding:4px 8px}
 .imp-map select{min-width:180px}
+.imp-add{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;padding:6px 8px;border:1px dashed var(--rule);border-radius:8px}
+.imp-add input{width:110px}.imp-add select{min-width:0!important}.imp-add .note{margin:0}
 .imp-pa{font-size:12.5px}
 .imp-line{display:flex;gap:4px;flex-wrap:wrap}.imp-line span{border:1px solid var(--rule);border-radius:6px;padding:2px 8px;font-size:13px}
 .imp-warn{background:color-mix(in srgb,var(--r2) 14%,transparent);border-radius:6px;padding:8px 10px;font-size:13px}
@@ -760,16 +762,20 @@ function renderImportDetail() {
   const inn = P.innings || [], other = g ? ((g.innings || {})[u.side === 'away' ? 'home' : 'away'] || []) : [];
   const opt = (no, cur) => `<select data-no="${esc(no)}"><option value="">— 未對應 —</option>${roster.sort((a, b) => (+a.no || 0) - (+b.no || 0)).map(p => `<option value="${p.id}"${p.id === cur ? ' selected' : ''}>#${esc(p.no)} ${esc(p.name)}${sexOpt(p)}</option>`).join('')}</select>`;
   const slotOf = no => (P.lineup || []).filter(l => l.no === no).map(l => l.slot + (l.sub ? '（替）' : '')).join('、');
+  /* 背號不在名單：可在這裡直接把球員加入本隊名單（姓名預填紀錄表上寫的） */
+  const sheetName = no => ((P.lineup || []).find(l => l.no === no && l.name) || {}).name || '';
+  const addForm = no => `<div class="imp-add" data-addno="${esc(no)}"><span class="note">名單沒有 #${esc(no)}，直接加入：</span><input data-k="name" placeholder="姓名" value="${esc(sheetName(no))}" aria-label="#${esc(no)} 姓名"><select data-k="sex" aria-label="性別"><option value="">性別未填</option><option value="M">男</option><option value="F">女</option></select><select data-k="bats" aria-label="打擊"><option value="R">右打</option><option value="L">左打</option><option value="S">左右開弓</option></select><button type="button" class="primary" data-add>＋ 加入名單並對應</button></div>`;
+  const noRoster = no => !roster.some(p => String(p.no) === String(no));
   box.innerHTML = `<div class="ph"><h2>第 ${esc((g && g.gameNo) || u.gameNo || '')} 場｜${esc(teamName(u.teamId))}（${u.side === 'away' ? '先攻' : '後攻'}）</h2><span class="badge ${(UPS[u.status] || [])[1] || ''}">${(UPS[u.status] || [u.status])[0]}</span></div>
   <div class="pb">
     ${!g ? '<div class="imp-warn">找不到這個場次（可能已被刪除），無法匯入。</div>' : ''}
     <div class="note">上傳：${esc(u.createdByName || '')}・${fmtDT(u.createdAt)}　紀錄表：${esc(P.head?.team || '')} ${esc(P.head?.date || '')} ${esc(P.head?.field || '')}${P.head?.weather ? '・' + esc(P.head.weather) : ''}${P.head?.wind ? '・' + esc(P.head.wind) : ''}</div>
     <div><b>本隊逐局得分</b>（合計 ${inn.reduce((a, b) => a + b, 0)}）<div class="imp-line" style="margin-top:4px">${inn.map((v, i) => `<span>${i + 1}局 <b>${v}</b></span>`).join('') || '<span>—</span>'}</div>
       ${g ? `<div class="note" style="margin-top:4px">對手目前逐局：${other.map((v, i) => `${i + 1}局 ${v ?? '—'}`).join('｜') || '尚無'}。匯入只更新本隊這一半，對手那一半由對手的紀錄表或手動填寫。</div>` : ''}</div>
-    <div><b>球員對應</b> <span class="note">依背號自動對到「${esc(teamName(u.teamId))}」名單；對不到的請選人，或先到「球隊名單」補上再回來</span>
+    <div><b>球員對應</b> <span class="note">依背號自動對到「${esc(teamName(u.teamId))}」名單；對不到的請選人，名單沒有的背號可在下方直接加入名單</span>
       <div class="tbl-wrap" style="max-height:none;margin-top:6px"><table class="imp-map"><thead><tr><th>背號</th><th>棒次</th><th>對應球員</th></tr></thead><tbody>
-      ${lineNos.map(no => `<tr><td>#${esc(no)}</td><td>${slotOf(no)}</td><td>${opt(no, idOf(no))}${!idOf(no) && batNos.has(no) ? ' <span class="badge pending">必填</span>' : ''}</td></tr>`).join('')}
-      ${runNos.map(no => `<tr><td>#${esc(no)}</td><td>代跑</td><td>${opt(no, idOf(no))}${idOf(no) ? '' : ' <span class="note">不在名單：得分只算在全隊</span>'}</td></tr>`).join('')}
+      ${lineNos.map(no => `<tr><td>#${esc(no)}${sheetName(no) ? `<div class="note">紀錄表：${esc(sheetName(no))}</div>` : ''}</td><td>${slotOf(no)}</td><td>${opt(no, idOf(no))}${!idOf(no) && batNos.has(no) ? ' <span class="badge pending">必填</span>' : ''}${!idOf(no) && noRoster(no) ? addForm(no) : ''}</td></tr>`).join('')}
+      ${runNos.map(no => `<tr><td>#${esc(no)}</td><td>代跑</td><td>${opt(no, idOf(no))}${idOf(no) ? '' : ' <span class="note">不在名單：得分只算在全隊</span>'}${!idOf(no) && noRoster(no) ? addForm(no) : ''}</td></tr>`).join('')}
       </tbody></table></div></div>
     <details><summary><b>打席明細</b>（${(P.pas || []).length} 筆）</summary><div class="tbl-wrap" style="max-height:340px;margin-top:6px"><table class="imp-pa"><thead><tr><th>局</th><th>輪</th><th>棒次</th><th>背號</th><th>落點</th><th>結果</th><th>打點</th><th>回本壘</th></tr></thead><tbody>
       ${(P.pas || []).map(pa => `<tr><td>${pa.inn}</td><td>${pa.round}</td><td>${pa.slot}${pa.sub ? '替' : ''}</td><td>#${esc(pa.no)}</td><td>${esc(pa.zone || '—')}</td><td>${esc(pa.res)}${pa.pr ? ` <span class="badge">PR#${esc(pa.pr.no)}</span>` : ''}</td><td>${pa.rbi || ''}</td><td>${(pa.scorers || []).map(n => '#' + esc(n)).join('、')}</td></tr>`).join('')}
@@ -786,6 +792,16 @@ function renderImportDetail() {
     </div>
   </div>`;
   box.querySelectorAll('select[data-no]').forEach(sel => sel.onchange = () => { IM.map[sel.dataset.no] = sel.value; renderImportDetail(); });
+  box.querySelectorAll('.imp-add [data-add]').forEach(btn => btn.onclick = async () => {
+    const w = btn.closest('.imp-add'), no = w.dataset.addno, v = k => w.querySelector(`[data-k="${k}"]`).value.trim(), name = v('name');
+    if (!name) { toast(`請先填 #${no} 的姓名`); w.querySelector('[data-k="name"]').focus(); return; }
+    btn.disabled = true;
+    try {
+      const ref = await col(U.tid, 'players').add({ teamId: u.teamId, no: String(no), name, sex: v('sex'), bats: v('bats') || 'R' });
+      if (!D.players.some(p => p.id === ref.id)) D.players.push({ id: ref.id, teamId: u.teamId, no: String(no), name, sex: v('sex'), bats: v('bats') || 'R' });
+      IM.map[no] = ref.id; renderImportDetail(); toast(`已把 #${no} ${name} 加入「${teamName(u.teamId)}」名單並對應`);
+    } catch (e) { btn.disabled = false; toast(friendlyError(e)); }
+  });
   $('shi-go').onclick = () => {
     const go = () => doImport(u, P);
     exist.length ? ask(`匯入會取代第 ${g.gameNo} 場 ${teamName(u.teamId)} 已有的 ${exist.length} 筆打席紀錄，確定？`, '確認匯入', go) : go();
