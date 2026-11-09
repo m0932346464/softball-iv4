@@ -436,6 +436,8 @@ body.solo #sc-pick,body.solo #modebar{display:none!important}
 .solo-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted);border:1px dashed var(--rule);border-radius:10px;padding:8px 10px}
 .solo-bar button{margin-left:auto}
 .sc-list button{grid-template-columns:30px minmax(0,1fr)!important;row-gap:1px!important}.sc-list .sl{grid-row:1/3}.sc-list .st{grid-column:2}
+#q-hn{font:inherit;font-size:14px;font-weight:700;padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:var(--surface);color:var(--ink);width:150px}
+#q-hn.on{background:#fef3c7;border-color:#f59e0b}
 #q-player{font:inherit;font-size:14px;font-weight:700;padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:var(--surface);color:var(--ink);width:180px}
 #sc-q{font:inherit;font-size:14px;padding:7px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--surface);color:var(--ink);width:100%}
 .sc-list .ot{font-size:11px;color:var(--accent);font-weight:700;margin-left:4px}
@@ -675,6 +677,7 @@ table.ps tfoot td{height:38px;font-weight:700;background:var(--sunk);border-top:
     <div class="modebar" id="modebar" role="tablist" aria-label="查詢模式"><button type="button" data-m="live">比賽中・防守準備</button><button type="button" data-m="pre">賽前・全隊情蒐</button><button type="button" data-m="player">單一球員</button></div>
     <label>① 選學校<select id="q-team" aria-label="查詢球隊"></select></label>
     <label>② 選球員<select id="q-player" aria-label="查球員（先選查詢球隊）"></select></label>
+    <label title="歷屆資料只取每位打者最近幾個打席；本場資料不受影響">③ 歷屆範圍<select id="q-hn" aria-label="歷屆資料範圍"><option value="all">全部</option><option value="20">最近 20 打席</option><option value="50">最近 50 打席</option><option value="80">最近 80 打席</option></select></label>
     <label hidden>攻擊方<div class="seg" id="bat-side"><button type="button" data-v="away">客隊（上）</button><button type="button" data-v="home">主隊（下）</button></div></label>
     <button class="swap-sides" type="button" id="swap-sides" title="現場決定先後攻後，按此對調" hidden>⇄ 交換先後攻</button>
     <div class="score" id="score" hidden>
@@ -1028,12 +1031,24 @@ function isMine(p, b) {
 }
 /* 球隊別名：本隊名稱＋別名，別屆的隊名或別名只要有一個相同就視為同一隊 */
 function aliasSet(t) { return new Set([t && t.name, ...((t && t.aliases) || [])].filter(Boolean).map(x => String(x).trim())); }
+/* 歷屆範圍（第四版）：每位打者只取最近 N 個打席的歷屆資料 */
+const hSec = b => b.gsort || ((D.games.find(g => g.id === b.gameId) || {}).scheduledAt || {}).seconds || 0;
+const hOrder = (a, b) => (hSec(b) - hSec(a)) || (tsv(b) - tsv(a)) || ((b.at || 0) - (a.at || 0)) || ((b.inning || 0) - (a.inning || 0));
+function limitHist(all) {
+  const n = +U.hn || 0; if (!n) return all;
+  const grp = new Map();
+  for (const b of all) { const p = D.players.find(x => isMine(x, b)), k = p ? 'p:' + p.id : 'b:' + (b.tid || '') + '/' + (b.batterId || b.batterName || ''); if (!grp.has(k)) grp.set(k, []); grp.get(k).push(b); }
+  const out = [];
+  for (const arr of grp.values()) { arr.sort(hOrder); out.push(...arr.slice(0, n)); }
+  return out;
+}
+function applyHN() { const v = U.hn || 'all', s = $('q-hn'); if (s) { s.value = v; s.classList.toggle('on', v !== 'all'); } D.histBalls = limitHist(D.histAll || []); }
 async function loadHistory() {
   const tn = teamName(batTeamId()), names = aliasSet(D.teams.get(batTeamId()));
   const key = U.tid + '|' + tn + '|' + [...names].join(',');
   if (key === histKey) { renderData(); return; }
   if (tn === '—' || !D.tournaments.length) return;   // 球隊或賽事清單還沒載入：等載入後再抓
-  histKey = key; D.histBalls = [];
+  histKey = key; D.histBalls = []; D.histAll = [];
   const out = [];
   for (const t of D.tournaments) {
     try {
@@ -1047,7 +1062,7 @@ async function loadHistory() {
       }
     } catch (e) { /* 無權限或無資料時略過 */ }
   }
-  if (histKey === key) { D.histBalls = out; renderData(); }
+  if (histKey === key) { D.histAll = out; applyHN(); renderData(); }
 }
 function setSync(st) { $('sync').className = 'sync' + (st === 'ok' ? '' : ' ' + st); $('sync-txt').textContent = st === 'off' ? '離線（暫存在裝置）' : st === 'pending' ? '上傳中…' : '已同步'; }
 addEventListener('online', () => setSync(D.pendingWrites ? 'pending' : 'ok'));
@@ -1174,12 +1189,12 @@ function renderControls() {
   if (i >= 0) {
     const slot = L[i];
     $('now-slot').innerHTML = `第<b>${i + 1}</b>棒`;
-    $('now-name').textContent = pLabel(p);
+    $('now-name').innerHTML = pLab(p);
     const today = D.gameBalls.filter(b => b.batterId === bid);
-    $('now-sub').textContent = `${p && p.sex === 'F' ? '女・' : ''}${POSL[slot.pos] || slot.pos || ''}　本場 ${today.length ? today.map(b => (RES[b.result] || {}).label).join('、') : '首打席'}`;
+    $('now-sub').textContent = `${POSL[slot.pos] || slot.pos || ''}　本場 ${today.length ? today.map(b => (RES[b.result] || {}).label).join('、') : '首打席'}`;
     const nx = L[(i + 1) % L.length];
-    $('ondeck').innerHTML = `下一棒：<b>${esc(pLabel(pById(curOf(nx))))}</b>`;
-    if (document.body.classList.contains('fit')) $('now-sub').insertAdjacentHTML('beforeend', `<span class="od">・下一棒 ${esc(pLabel(pById(curOf(nx))))}</span>`);
+    $('ondeck').innerHTML = `下一棒：<b>${pLab(pById(curOf(nx)))}</b>`;
+    if (document.body.classList.contains('fit')) $('now-sub').insertAdjacentHTML('beforeend', `<span class="od">・下一棒 ${pLab(pById(curOf(nx)))}</span>`);
     $('prev-b').disabled = $('next-b').disabled = false;
   } else {
     const R0 = rosterOf(batTeamId());
@@ -1251,7 +1266,7 @@ function renderTend() {
     else if (pct(out, n) <= 35) tips.push('內野球多，內野守前');
   }
   const TL = { G: '滾地', L: '平飛', F: '高飛', P: '小飛球' };
-  el.innerHTML = `<div class="t1"><b>${esc(pLabel(p))}</b><span class="note">${HAND[p.bats] || ''}・${(() => { const gs = new Set(all.map(b => b.gameId || U.gid)).size; return n ? `依 ${gs} 場比賽、${n} 顆打進界內的球統計${n < 5 ? '（球數少，僅供參考）' : ''}` : (all.length ? `${gs} 場比賽，還沒有打進界內的球` : '還沒有比賽紀錄'); })()}</span></div>
+  el.innerHTML = `<div class="t1"><b>${pLab(p)}</b><span class="note">${(() => { const gs = new Set(all.map(b => b.gameId || U.gid)).size; return n ? `依 ${gs} 場比賽、${n} 顆打進界內的球統計${n < 5 ? '（球數少，僅供參考）' : ''}` : (all.length ? `${gs} 場比賽，還沒有打進界內的球` : '還沒有比賽紀錄'); })()}</span></div>
     ${n ? `<div class="t2">${pill('左', pct(L, n) + '%', L === mx && pct(L, n) >= 45)}${pill('中', pct(C, n) + '%', C === mx && pct(C, n) >= 45)}${pill('右', pct(R, n) + '%', R === mx && pct(R, n) >= 45)}${pill('外野', pct(out, n) + '%', pct(out, n) >= 70)}${topT ? pill('最多', TL[topT[0]] || topT[0]) : ''}${topZ.length ? pill('常落', topZ.join('、')) : ''}</div>
     <div class="tip">守備建議：${tips.join('；')}</div>` : '<div class="tip none">此打者尚無落點資料，記錄後會自動累積</div>'}`;
 }
@@ -1268,7 +1283,7 @@ function renderData() {
   // 統計
   const R0 = rosterOf(batTeamId());
   if (U.fb !== 'all' && !R0.some(p => p.id === U.fb)) U.fb = 'all';
-  $('f-batter').innerHTML = '<option value="all">全部打者</option>' + R0.map(p => `<option value="${p.id}">${esc(pLabel(p))}</option>`).join('');
+  $('f-batter').innerHTML = '<option value="all">全部打者</option>' + R0.map(p => `<option value="${p.id}">${esc(pLabel(p))}${sexOpt(p)}</option>`).join('');
   $('f-batter').value = U.fb;
   const n = V.length || 1;
   { /* 統計：打席結果分組橫條（各結果用自己的顏色並標名稱與數字）；方向／型態／深度用數字卡
@@ -1321,7 +1336,7 @@ function renderScout() {
   $('sc-list').innerHTML = shown.map(x => { const p = pById(x.id); if (!p) return '';
     const g = gb.filter(b => b.batterId === x.id), h = histOf(p);
     const gh = g.reduce((a, b) => a + ((RES[b.result] || {}).hit || 0), 0), gab = g.reduce((a, b) => a + ((RES[b.result] || {}).ab || 0), 0);
-    return `<button type="button" role="option" data-p="${x.id}" aria-current="${x.id === bid}"><span class="sl${x.sub ? ' sub' : ''}">${x.bench ? '' : x.sub ? '替' : x.slot}</span><span class="nm">${esc(pLabel(p))}${x.other ? `<span class="ot">${esc(teamName(p.teamId))}</span>` : ''}</span><span class="st">${g.length ? `本場 ${gab} 打數 ${gh} 安` : '本場 —'}・歷屆 ${h.length} 席</span></button>`; }).join('') || `<p class="note" style="margin:8px">${fq ? '找不到符合的球員' : '此隊尚無球員名單'}</p>`;
+    return `<button type="button" role="option" data-p="${x.id}" aria-current="${x.id === bid}"><span class="sl${x.sub ? ' sub' : ''}">${x.bench ? '' : x.sub ? '替' : x.slot}</span><span class="nm">${pLab(p)}${x.other ? `<span class="ot">${esc(teamName(p.teamId))}</span>` : ''}</span><span class="st">${g.length ? `本場 ${gab} 打數 ${gh} 安` : '本場 —'}・歷屆 ${h.length} 席</span></button>`; }).join('') || `<p class="note" style="margin:8px">${fq ? '找不到符合的球員' : '此隊尚無球員名單'}</p>`;
   const p = pById(bid);
   if (!p) { $('sc-card').innerHTML = ''; return; }
   const line = bs => { const r = emptyLine({}); bs.forEach(b => addBall(r, b, FD)); return rateStats(r); };
@@ -1417,7 +1432,7 @@ function pCard(p, tm, o) {
   const hot = (v, k) => `<span class="${v >= 45 && v === Math.max(t.L, t.C, t.R) ? 'hot' : ''}">${k} ${v}%</span>`;
   const chip = b => { const rr = RES[b.result] || RES.OUT; return `<span><i style="background:var(${rr.c})"></i>${b.inning ? b.inning + '局 ' : ''}${rr.label}${hasLoc(b) ? '・' + esc(FD.zoneCode(b)) : ''}</span>`; };
   return `<button type="button" class="pc${o.now ? ' now' : ''}${o.mini ? ' mini' : ''}" data-p="${p.id}">
-    <div class="pc-h">${o.slot != null && o.slot !== '' ? `<span class="sl${o.sub ? ' sub' : ''}">${o.sub ? '替' : o.slot}</span>` : ''}<b>${esc(pLabel(p))}</b><small>${HAND[p.bats] || ''}${p.sex === 'F' ? '・女' : ''}</small>${o.tag ? `<span class="tg">${esc(o.tag)}</span>` : ''}</div>
+    <div class="pc-h">${o.slot != null && o.slot !== '' ? `<span class="sl${o.sub ? ' sub' : ''}">${o.sub ? '替' : o.slot}</span>` : ''}<b>${pLab(p)}</b>${o.tag ? `<span class="tg">${esc(o.tag)}</span>` : ''}</div>
     ${o.mini ? '' : `<div>${miniFieldSVG(D.tour && D.tour.field, B.all.map(b => Object.assign({}, b, { gameId: b.gameId || U.gid })), { curGame: U.gid })}</div>`}
     <div class="pc-st">歷屆 <b>${H.pa}</b> 席${H.ab ? `・打擊率 <b>${f3(H.avg)}</b>` : ''}${H.HR ? `・HR <b>${H.HR}</b>` : ''}${B.cur.length ? `｜本場 <b>${C.ab}</b> 打數 <b>${C.h}</b> 安` : ''}${o.extra ? '｜' + o.extra : ''}</div>
     ${t.n ? `<div class="pc-pl">${hot(t.L, '左')}${hot(t.C, '中')}${hot(t.R, '右')}<span class="${t.out >= 70 ? 'hot' : ''}">外野 ${t.out}%</span>${t.top.length ? `<span>常落 ${t.top.join('、')}</span>` : ''}</div><div class="pc-tip">守備：${t.tip}${t.n < 5 ? '（資料少）' : ''}</div>` : '<div class="pc-tip none">尚無落點資料</div>'}
@@ -1449,7 +1464,7 @@ function spCard(p, tm, o) {
   const out = n ? Math.round(fair.filter(b => FD.zoneOf(b) === 'out').length / n * 100) : 0;
   const tip = !n ? '' : pc('L') >= 55 ? '偏左側' : pc('R') >= 55 ? '偏右側' : pc('C') >= 50 ? '偏中間' : '分散';
   return `<div class="sp-card sp-go ${o.now ? 'cur' : ''}" data-p="${p.id}" role="button" tabindex="0"><div class="ord">${o.sub ? '↳' : o.slot}<small>${esc(o.tag || '')}</small></div>
-    <div class="nm">#${esc(p.no || '')} ${esc(p.name)}</div><div class="meta">${p.sex === 'F' ? '女・' : ''}${HAND[p.bats] || ''}・本場 ${n} 球${n ? `・外野 ${out}%` : ''}${o.extra ? '・' + o.extra : ''}</div>
+    <div class="nm">${pLab(p)}</div><div class="meta">本場 ${n} 球${n ? `・外野 ${out}%` : ''}${o.extra ? '・' + o.extra : ''}</div>
     ${miniFieldSVG(D.tour && D.tour.field, game.map(b => Object.assign({}, b, { gameId: U.gid })), { curGame: U.gid })}
     <div class="seq">${game.length ? game.map(b => `<span title="${b.inning ? b.inning + ' 局' : ''}${hasLoc(b) ? '・' + FD.zoneCode(b) : ''}">${paperCode(b)}</span>`).join('') : '<span class="note" style="border:0">本場尚未打擊</span>'}</div>
     ${tip ? `<div class="tipline">${tip}${out >= 70 ? '・外野後退' : out <= 35 ? '・內野球多' : ''}</div>` : ''}</div>`;
@@ -1464,7 +1479,7 @@ function renderBoard() {
       ${P.order.length ? `<div class="bd-sec"><h3>預測先發打序<small>${P.order.length} 人</small></h3><div class="pcs">${P.order.map(o => pCard(o.p, tm, { slot: o.slot, extra: appTxt(o.p) })).join('')}</div></div>` : ''}
       ${(() => { const hasD = p => ballsOf(p, tm).all.length > 0, A = P.others.filter(hasD), Z = P.others.filter(p => !hasD(p));
         return `<div class="bd-sec"><h3>${P.order.length ? '其他可能上場（替補）' : '有出賽紀錄的球員'}<small>${A.length} 人</small></h3><div class="pcs sm">${A.map(p => pCard(p, tm, { extra: appTxt(p) })).join('') || '<p class="bd-empty">無</p>'}</div></div>`
-          + (Z.length ? `<div class="bd-sec"><h3>名單中尚無出賽紀錄<small>${Z.length} 人</small></h3><div class="pc-pl nod">${Z.map(p => `<button type="button" class="chipb" data-p="${p.id}">${esc(pLabel(p))}</button>`).join('')}</div></div>` : ''); })()}`;
+          + (Z.length ? `<div class="bd-sec"><h3>名單中尚無出賽紀錄<small>${Z.length} 人</small></h3><div class="pc-pl nod">${Z.map(p => `<button type="button" class="chipb" data-p="${p.id}">${pLab(p)}</button>`).join('')}</div></div>` : ''); })()}`;
     return;
   }
   // 比賽中・防守準備
@@ -1496,7 +1511,7 @@ function renderBoard() {
   el.innerHTML = `<div class="bd-head"><div><h2>比賽中・防守準備：${tn}</h2><span class="note">${src}</span></div><span class="note">只顯示本場資料；點球員可看歷屆與完整成績</span></div>
     <div class="bd-sec"><h3>即將上場<small>從第 ${next} 棒起 ${up.length} 位</small></h3><div class="spray-grid up">${up.map((x, k) => card(x, k)).join('') || '<p class="bd-empty">尚無打序</p>'}</div></div>
     ${rest.length ? `<div class="bd-sec"><h3>其餘打序<small>接續即將上場，依打擊順序：第 ${rest[0].slot} 棒起 ${rest.length} 人</small></h3><div class="spray-grid">${rest.map((x, k) => card(x, up.length + k)).join('')}</div></div>` : ''}
-    <div class="bd-sec"><h3>可能替補<small>本場尚未上場，依近 ${P.N || 0} 場出賽次數排序；點名字可看他的完整資料</small></h3><div class="pc-pl nod">${bench.map(p => `<button type="button" class="chipb" data-p="${p.id}">${esc(pLabel(p))}${P.apps.get(p.id) ? `<small style="color:var(--muted);margin-left:4px">近期出賽 ${P.apps.get(p.id)} 場</small>` : ''}</button>`).join('') || '<p class="bd-empty">無</p>'}</div></div>`;
+    <div class="bd-sec"><h3>可能替補<small>本場尚未上場，依近 ${P.N || 0} 場出賽次數排序；點名字可看他的完整資料</small></h3><div class="pc-pl nod">${bench.map(p => `<button type="button" class="chipb" data-p="${p.id}">${pLab(p)}${P.apps.get(p.id) ? `<small style="color:var(--muted);margin-left:4px">近期出賽 ${P.apps.get(p.id)} 場</small>` : ''}</button>`).join('') || '<p class="bd-empty">無</p>'}</div></div>`;
 }
 $('board').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (!b || !pById(b.dataset.p)) return; U.pick = b.dataset.p; U.mode = 'player'; if (!U.scope.startsWith('batter')) U.scope = 'batterHist'; saveU(); setModeUI(); applyFit(); renderQTeam(); renderControls(); renderData(); scrollTo(0, 0); });
 setModeUI();
@@ -1512,7 +1527,7 @@ function renderBox() {
   $('box-rows').innerHTML = ids.length ? ids.map(o => {
     const r = stat(o.id), p = pById(o.id);
     const rd = Array(5).fill(null); mine.filter(b => b.batterId === o.id).sort(byTime).forEach((b, i) => { let k = b.paper && b.paper.round ? b.paper.round - 1 : i; while (k < 5 && rd[k]) k++; if (k < 5) rd[k] = b; });   // 依第幾輪打擊放進五個欄位
-    return `<tr class="${o.slot === ci + 1 && !o.sub ? 'cur' : ''}"><td>${o.sub ? '' : o.slot}</td><td>${o.sub ? '↳ ' : ''}${esc(pLabel(p))}${o.sub ? `<small class="note">（${fromOf(o.id, o.from)}局替補）</small>` : ''}</td><td class="num">${r.pa}</td><td class="num">${r.ab}</td><td class="num">${r.h}</td><td class="num">${RS(o.id)}</td><td class="num">${RBI(o.id)}</td><td class="num">${r.HR}</td><td class="num">${r.BB}</td><td class="num">${r.K}</td>${rd.map(b => { if (!b) return '<td class="rd"></td>'; const x = RES[b.result] || RES.OUT; return `<td class="rd" title="${b.inning ? b.inning + ' 局' : ''}${hasLoc(b) ? '・' + esc(FD.zoneCode(b)) : ''}"><i style="background:var(${x.c})"></i>${x.label}</td>`; }).join('')}</tr>`;
+    return `<tr class="${o.slot === ci + 1 && !o.sub ? 'cur' : ''}"><td>${o.sub ? '' : o.slot}</td><td>${o.sub ? '↳ ' : ''}${pLab(p)}${o.sub ? `<small class="note">（${fromOf(o.id, o.from)}局替補）</small>` : ''}</td><td class="num">${r.pa}</td><td class="num">${r.ab}</td><td class="num">${r.h}</td><td class="num">${RS(o.id)}</td><td class="num">${RBI(o.id)}</td><td class="num">${r.HR}</td><td class="num">${r.BB}</td><td class="num">${r.K}</td>${rd.map(b => { if (!b) return '<td class="rd"></td>'; const x = RES[b.result] || RES.OUT; return `<td class="rd" title="${b.inning ? b.inning + ' 局' : ''}${hasLoc(b) ? '・' + esc(FD.zoneCode(b)) : ''}"><i style="background:var(${x.c})"></i>${x.label}</td>`; }).join('')}</tr>`;
   }).join('') : `<tr><td colspan="11" class="empty">尚未排打序或尚無紀錄</td></tr>`;
   const t = emptyLine({}); mine.forEach(b => addBall(t, b, FD)); rateStats(t);
   $('box-foot').innerHTML = `<tr><td></td><td>${esc(teamName(tm))} 合計</td><td class="num">${t.pa}</td><td class="num">${t.ab}</td><td class="num">${t.h}</td><td class="num">${mine.reduce((s, b) => s + ((b.run && b.run.scored) || []).length, 0)}</td><td class="num">${mine.reduce((s, b) => s + ((b.run && b.run.rbi) || 0), 0)}</td><td class="num">${t.HR}</td><td class="num">${t.BB}</td><td class="num">${t.K}</td><td colspan="5" class="rd-sum">打擊率 ${t.ab ? fmt3(t.avg) : '—'}</td></tr>`;
@@ -1521,14 +1536,14 @@ function renderCmp() {
   /* 預設跟著目前打者；也可從下拉選本隊任何一位打者比較 */
   const L = lineup(), opts = L.flatMap(s => s.players.map(x => x.id)).filter((v, i, a) => a.indexOf(v) === i);
   if (U.cmpB && !opts.includes(U.cmpB)) U.cmpB = '';
-  $('cmp-b').innerHTML = `<option value="">目前打者${pById(curBatter()) ? '（' + esc(pLabel(pById(curBatter()))) + '）' : ''}</option>` + opts.map(id => { const pp = pById(id), n = D.gameBalls.filter(b => b.batterId === id).length; return `<option value="${id}">${esc(pLabel(pp))}${n ? `・本場 ${n} 打席` : '・本場未打擊'}</option>`; }).join('');
+  $('cmp-b').innerHTML = `<option value="">目前打者${pById(curBatter()) ? '（' + esc(pLabel(pById(curBatter()))) + sexOpt(pById(curBatter())).replace(/[（）]/g, m => m === '（' ? ' ' : '') + '）' : ''}</option>` + opts.map(id => { const pp = pById(id), n = D.gameBalls.filter(b => b.batterId === id).length; return `<option value="${id}">${esc(pLabel(pp))}${sexOpt(pp)}${n ? `・本場 ${n} 打席` : '・本場未打擊'}</option>`; }).join('');
   $('cmp-b').value = U.cmpB || '';
   const bid = U.cmpB || curBatter(), p = pById(bid), FD = FV.field;
   if (!p) { $('cmp-title').textContent = '選定打者後顯示'; $('cmp').innerHTML = ''; $('cmp-zones').innerHTML = ''; return; }
   const now = rateStats((() => { const r = emptyLine({}); D.gameBalls.filter(b => b.batterId === bid).forEach(b => addBall(r, b, FD)); return r; })());
   const hb = D.histBalls.filter(b => isMine(p, b) && b.gameId !== U.gid);
   const his = rateStats((() => { const r = emptyLine({}); hb.forEach(b => addBall(r, b, FD)); return r; })());
-  $('cmp-title').innerHTML = `<b>${esc(pLabel(p))}</b>${now.pa ? '' : '　<span style="color:var(--r1);font-weight:700">本場尚未上場打擊，「本場」欄沒有數據</span>'}　歷史資料：本場以外 ${his.games.size} 場比賽`;
+  $('cmp-title').innerHTML = `<b>${pLab(p)}</b>${now.pa ? '' : '　<span style="color:var(--r1);font-weight:700">本場尚未上場打擊，「本場」欄沒有數據</span>'}　歷史資料：本場以外 ${his.games.size} 場比賽`;
   /* 圖表優先：左邊兩張落點圖（本場／歷史），右邊本場與歷史的對照長條 */
   const nowB = D.gameBalls.filter(b => b.batterId === bid), pc = (a, n) => n ? a / n : 0;
   const zc = {}; hb.filter(hasLoc).forEach(b => { const z = FD.zoneCode(b); zc[z] = (zc[z] || 0) + 1; });
@@ -1566,7 +1581,7 @@ function renderSpray() {
     const out = n ? Math.round(fair.filter(b => FD.zoneOf(b) === 'out').length / n * 100) : 0;
     const tip = !n ? '' : pc('L') >= 55 ? '偏左側' : pc('R') >= 55 ? '偏右側' : pc('C') >= 50 ? '偏中間' : '分散';
     return `<div class="sp-card ${o.slot === ci + 1 && !o.sub ? 'cur' : ''}"><div class="ord">${o.sub ? '↳' : o.slot}<small>${esc(o.pos || '')}</small></div>
-      <div class="nm">#${esc(p.no)} ${esc(p.name)}</div><div class="meta">${p.sex === 'F' ? '女・' : ''}${HAND[p.bats] || ''}・${n} 球${n ? `・外野 ${out}%` : ''}</div>
+      <div class="nm">${pLab(p)}</div><div class="meta">${n} 球${n ? `・外野 ${out}%` : ''}</div>
       ${miniFieldSVG(D.tour && D.tour.field, all.map(b => Object.assign({}, b, { gameId: b.gameId || U.gid })), { curGame: U.gid })}
       <div class="seq">${game.length ? game.map(b => `<span>${paperCode(b)}</span>`).join('') : '<span class="note" style="border:0">本場尚未打擊</span>'}</div>
       ${tip ? `<div class="tipline">${tip}${out >= 70 ? '・外野後退' : out <= 35 ? '・內野球多' : ''}</div>` : ''}</div>`;
@@ -1960,8 +1975,8 @@ function lookupNo(no, selfIdx) {
   const p = byNo(n);
   if (!p) return { p: null, msg: `名單沒有 #${n}`, cls: 'bad' };
   const k = LU.findIndex((s, i) => i !== selfIdx && s.players.some(x => x.id === p.id));
-  if (k >= 0) return { p, msg: `${p.name}（已在第 ${k + 1} 棒）`, cls: 'bad', dupAt: k };
-  return { p, msg: p.name + (p.sex === 'F' ? '（女）' : ''), cls: '' };
+  if (k >= 0) return { p, msg: `${p.name}${sexOpt(p)}（已在第 ${k + 1} 棒）`, cls: 'bad', dupAt: k };
+  return { p, msg: p.name + sexOpt(p), cls: '' };
 }
 function renderLU() {
   const R0 = rosterOf(luTeam());
@@ -1971,11 +1986,11 @@ function renderLU() {
     const look = cp ? lookupNo(cp.no, i) : { msg: s.noTyped ? `名單沒有 #${normNo(s.noTyped)}` : '輸入背號', cls: s.noTyped ? 'bad' : 'dim' };
     return `<div class="lu-row" data-i="${i}">
       <span class="ord">${i + 1}</span>
-      ${hist.length ? `<span class="lu-p"><b>${esc(pLabel(cp))}</b></span>`
+      ${hist.length ? `<span class="lu-p"><b>${pLab(cp)}</b></span>`
         : `<span class="lu-p"><input type="text" inputmode="numeric" autocomplete="off" data-k="no" placeholder="背號" aria-label="第 ${i + 1} 棒背號" value="${esc(cp ? cp.no : (s.noTyped || ''))}"><span class="nm ${look.cls}">${esc(look.msg)}</span></span>`}
       <select data-k="pos" aria-label="第 ${i + 1} 棒守位">${POS.map(x => `<option value="${x}" ${x === s.pos ? 'selected' : ''} ${x !== 'EP' && x !== s.pos && tk.has(x) ? 'disabled' : ''}>${x} ${POSL[x]}</option>`).join('')}</select>
       <span class="inn-row" style="gap:4px"><button class="ghost" type="button" data-act="up" ${i ? '' : 'disabled'} aria-label="往前一棒">↑</button><button class="ghost" type="button" data-act="down" ${i < LU.length - 1 ? '' : 'disabled'} aria-label="往後一棒">↓</button><button class="ghost" type="button" data-act="sub" ${cur ? '' : 'disabled'}>替補</button><button class="del" type="button" data-act="del" aria-label="刪除此棒">×</button></span>
-      ${hist.length ? `<div class="hist">原：${hist.map((h, j) => `${esc(pLabel(pById(h.id)))}（至 ${s.players[j + 1].from - 1 || 1} 局）`).join(' → ')}</div>` : ''}
+      ${hist.length ? `<div class="hist">原：${hist.map((h, j) => `${esc(pLabel(pById(h.id)))}${sexOpt(pById(h.id))}（至 ${s.players[j + 1].from - 1 || 1} 局）`).join(' → ')}</div>` : ''}
       <div class="lu-sub" data-sub="${i}" hidden><span class="note">第</span><input type="number" min="1" max="15" value="${subDefaultInn()}" data-k="from" style="width:56px"><span class="note">局起由</span><span class="lu-p"><input type="text" inputmode="numeric" autocomplete="off" data-k="np" placeholder="背號" aria-label="替補球員背號"><span class="nm dim">輸入替補背號</span></span><span class="note">接手 ${POSL[s.pos] || s.pos}</span><button class="primary" type="button" data-act="dosub">上場</button></div>
     </div>`;
   }).join('') || '<p class="empty-state"><b>尚未排打序</b>按「增加一棒」逐棒輸入背號，或「依背號自動排 11 棒」後再調整</p>';
@@ -2079,7 +2094,7 @@ function renderQTeam() {
   h += grps.map(gp => `<optgroup label="${gp ? esc(gp) + ' 組' : '未分組'}">${all.filter(t => (t.group || '') === gp).map(t => opt(t)).join('')}</optgroup>`).join('');
   $('q-team').innerHTML = h;
   const R0 = rosterOf(batTeamId()), sel = U.mode === 'player' ? curBatter() : '';   // 查球員：只列查詢球隊（先選學校）的球員
-  $('q-player').innerHTML = `<option value="">— 選球員（${R0.length} 人）—</option>` + R0.map(p => `<option value="${p.id}"${p.id === sel ? ' selected' : ''}>#${esc(p.no || '—')} ${esc(p.name)}</option>`).join('');
+  $('q-player').innerHTML = `<option value="">— 選球員（${R0.length} 人）—</option>` + R0.map(p => `<option value="${p.id}"${p.id === sel ? ' selected' : ''}>#${esc(p.no || '—')} ${esc(p.name)}${sexOpt(p)}</option>`).join('');
 }
 /* 查球員：輸入背號或姓名（可跨隊），選定後直接進入單一球員 */
 function findPlayers(q) {
@@ -2091,6 +2106,8 @@ function findPlayers(q) {
   });
 }
 function goPlayer(p) { U.qTeam = p.teamId; U.qGid = U.gid; U.pick = p.id; U.mode = 'player'; U.solo = ''; U.scope = U.scope.startsWith('batter') ? U.scope : 'batterHist'; U.fb = 'all'; histKey = ''; saveU(); setModeUI(); applyFit(); renderAll(); subscribeScope(); }
+$('q-hn').addEventListener('change', e => { U.hn = e.target.value; saveU(); applyHN(); renderData(); toast(U.hn === 'all' ? '歷屆資料：全部' : `歷屆資料：每位打者最近 ${U.hn} 打席`); });
+applyHN();
 $('q-player').addEventListener('change', e => { const p = pById(e.target.value); if (p) goPlayer(p); });
 
 $('q-team').onchange = e => { const id = e.target.value, g = game(); U.qTeam = id; U.qGid = U.gid; if (g && (g.awayId === id || g.homeId === id)) U.side = g.awayId === id ? 'away' : 'home'; U.pick = ''; U.fb = 'all'; histKey = ''; saveU(); renderAll(); subscribeScope(); };

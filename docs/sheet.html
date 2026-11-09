@@ -296,6 +296,15 @@ dialog.lk{padding:18px 20px 14px}
 .phone-note b{font-size:18px}.phone-note p{margin:8px 0}.pn-b{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.pn-b .btn{font-size:15px;padding:9px 14px;text-decoration:none}
 .login-warn{display:flex;align-items:center;gap:10px;background:#fef3c7;border:2px solid #f59e0b;color:#78350f;border-radius:8px;padding:5px 10px;font-size:14px;flex:none}
 .login-warn[hidden]{display:none}.login-warn span{flex:1}.login-warn .btn{flex:none}
+/* 性別標示（第四版） */
+.sheet td.nm .nmw{display:flex;align-items:center;justify-content:center;gap:1px;min-width:0;max-width:100%}
+.sheet td.nm .nmt{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.xt { display: inline-flex; align-items: center; height: 1.4em; padding: 0 .25em; margin-left: .3em; border-radius: 4px; font-size: .8em; font-weight: 800; line-height: 1; vertical-align: .08em; white-space: nowrap; background: #fee2e2; color: #dc2626; }
+.sheet td.no{position:relative}
+.sheet td.no.fem input{padding-right:12px}
+.xtc { position: absolute; top: 50%; right: 2px; transform: translateY(-50%); font-style: normal; font-size: 9px; font-weight: 800; line-height: 1; padding: 2px 1px; border-radius: 3px; background: #fee2e2; color: #dc2626; pointer-events: none; }
+.xt.xu,.xtc.xu { background: #eef0f3; color: #8a94a3; }
+.xti { flex: none; font-style: normal; font-size: 9px; font-weight: 800; line-height: 1; padding: 2px 1px; border-radius: 3px; background: #fee2e2; color: #dc2626; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-app-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-auth-compat.js"></script>
@@ -452,6 +461,18 @@ const SLOTS = 12;                               // 棒次 1–12；替補不再�
 
 /* ---------- 狀態（存在這台裝置） ---------- */
 const KEY = 'sb-iv3-sheets', $ = id => document.getElementById(id);
+/* 性別標示（第四版） */
+const sexOf = v => /女|^F$|^f$/.test(String(v || '')) ? 'F' : /男|^M$|^m$/.test(String(v || '')) ? 'M' : '';
+const isF = p => sexOf(p && p.sex) === 'F';
+const pOfRow = r => r && r.pid && typeof RO !== 'undefined' && RO && RO.players ? RO.players.find(x => x.id === r.pid) : null;
+/* 例外標示（第四版）：只標少數資訊——女生在背號旁標「女」、左打／左右開弓在姓名後標「左」／「左右」，紅色；男生、右打不標 */
+const HANDX = { L: '左', S: '左右' }, HANDT = { L: '左打', S: '左右開弓' };
+const femTag = p => isF(p) ? '<span class="xt" title="女生">女</span>' : noSex(p) ? '<span class="xt xu" title="名單未填性別">?</span>' : '';
+const handTag = p => p && HANDX[p.bats] ? `<span class="xt" title="${HANDT[p.bats]}">${HANDX[p.bats]}</span>` : '';
+const sexTag = p => femTag(p) + handTag(p);
+const noSex = p => p && !sexOf(p.sex);
+const femCorner = p => isF(p) ? '<i class="xtc" title="女生">女</i>' : noSex(p) ? '<i class="xtc xu" title="名單未填性別">?</i>' : '';
+const handIn = p => p && HANDX[p.bats] ? `<i class="xti" title="${HANDT[p.bats]}">${HANDX[p.bats]}</i>` : '';
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 let DB = { cur: '', sheets: {} }, undo = [];
@@ -693,7 +714,7 @@ function render() {
   s.rows.forEach((r, i) => {
     const on = i === c.r;
     const gone = activeIdx(r.slot) !== i, dup = !gone && r.no && dupKeys.has(r.pid || '#' + r.no);
-    h += `<tr class="${r.sub ? 'sub' : ''}${gone ? ' gone' : ''}${on ? ' cur' : ''}${dup ? ' dup' : ''}"${dup ? ' title="同一位球員同時在兩個棒次上場，請修正背號或替補"' : ''}><td class="ord" title="${r.sub ? '替補' : '先發'}">${r.slot || ''}${r.sub ? '<span class="tsub">替</span>' : ''}</td><td class="no"><input data-no="${i}" inputmode="numeric" value="${r.no}" aria-label="第 ${r.ord} 棒背號"></td>${nameCell(r, i)}`;
+    h += `<tr class="${r.sub ? 'sub' : ''}${gone ? ' gone' : ''}${on ? ' cur' : ''}${dup ? ' dup' : ''}"${dup ? ' title="同一位球員同時在兩個棒次上場，請修正背號或替補"' : ''}><td class="ord" title="${r.sub ? '替補' : '先發'}">${r.slot || ''}${r.sub ? '<span class="tsub">替</span>' : ''}</td><td class="no${r.name && (isF(pOfRow(r)) || noSex(pOfRow(r))) ? ' fem' : ''}"><input data-no="${i}" inputmode="numeric" value="${r.no}" aria-label="第 ${r.ord} 棒背號">${r.name ? femCorner(pOfRow(r)) : ''}</td>${nameCell(r, i)}`;
     for (let k = 0; k < n; k++) h += `<td class="c loc${(r.loc[k] || '').length >= 4 ? ' long' : ''}${on && k === c.c ? (c.k === 'loc' ? ' on' : ' pair') : ''}" data-r="${i}" data-c="${k}" data-k="loc">${r.loc[k] || ''}${r.inn[k] && (r.loc[k] || r.res[k]) ? `<sub class="inn" title="第 ${r.inn[k]} 局">${r.inn[k]}</sub>` : ''}</td>`;
     h += `<td class="note"><input data-note="${i}:locNote" value="${r.locNote.replace(/"/g, '&quot;')}" aria-label="落點備註"></td>`;
     for (let k = 0; k < n; k++) h += `<td class="c res${on && k === c.c ? (c.k === 'res' ? ' on' : ' pair') : ''}" data-r="${i}" data-c="${k}" data-k="res">${r.res[k] || ''}${r.rbi[k] ? `<sup>${r.rbi[k]}</sup>` : ''}${r.sc[k] ? '<i class="run">●</i>' : ''}${r.pr[k] ? `<span class="prm" title="${r.pr[k].swap ? '換人代跑' : '臨時代跑'}">PR${r.pr[k].no}</span>` : ''}</td>`;
@@ -706,7 +727,7 @@ function render() {
   if (keep) { const el = $('sheet').querySelector(keep); if (el) el.focus(); }   // 重畫表格時保留正在輸入的欄位
   const row = s.rows[c.r];
   const step = !(s.team || '').trim() ? '<b>①</b> 先填最上方基本資料（隊伍、球場、天氣、風勢）' : starters().slice(0, 10).some(r => !r.no) ? '<b>②</b> 在表格「背號」欄填本場第 1–10 棒背號（至少 10 人，按 Enter 換下一棒）' : '';
-  $('hint').innerHTML = step || `第 <b>${s.inning || 1}</b> 局・第 <b>${row.ord}</b> 棒${row.no ? ' #' + row.no : ''}${row.name ? ' ' + esc(row.name) : ''}・第 <b>${'一二三四'[c.c]}</b> 輪　${c.k === 'loc' ? '點球場記落點（三振、保送不點落點，直接按結果）' : c.k === 'stat' ? '有人回本壘就在下方面板點選；沒有就直接記下一棒' : '請按結果代碼'}`;
+  $('hint').innerHTML = step || `第 <b>${s.inning || 1}</b> 局・第 <b>${row.ord}</b> 棒${row.no ? ' #' + row.no : ''}${row.name ? ' ' + esc(row.name) + sexTag(pOfRow(row)) : ''}・第 <b>${'一二三四'[c.c]}</b> 輪　${c.k === 'loc' ? '點球場記落點（三振、保送不點落點，直接按結果）' : c.k === 'stat' ? '有人回本壘就在下方面板點選；沒有就直接記下一棒' : '請按結果代碼'}`;
   { const pq = $('pq'), on = !step && row.pid && s.teamId; pq.hidden = !on;   // 查此打者：放在球場右下角空白處，不遮球場
     if (on) { pq.dataset.pid = row.pid; pq.dataset.ri = c.r; pq.href = `index.html?t=${encodeURIComponent(s.tid || RO.tid || '')}&g=${encodeURIComponent((s.link && s.link.gid) || '')}&p=${encodeURIComponent(row.pid)}&tm=${encodeURIComponent(s.teamId)}`; pq.innerHTML = `🔍 查此打者<small>${row.no ? '#' + esc(row.no) + ' ' : ''}${esc(row.name || '')} 歷屆落點</small>`; } }
   { const pt = partner(s), wait = !!(pt && !myTurn(s) && c.k !== 'stat' && !row.res[c.c]);   // 不是這一隊進攻的半局：只能查看，不能記新打席
@@ -759,7 +780,7 @@ async function loadRoster(tid) {
     const T = UPFB.db.collection('tournaments').doc(t.id);
     const [tm, ps] = await Promise.all([T.collection('teams').get(), T.collection('players').get()]);
     const local = RO.tid === t.id ? RO.players.filter(p => p.pending) : [];
-    RO = { tid: t.id, tname: t.name || '', teams: tm.docs.map(d => ({ id: d.id, name: d.data().name || d.id })), players: ps.docs.map(d => { const x = d.data(); return { id: d.id, teamId: x.teamId, no: String(x.no ?? ''), name: x.name || '', sex: x.sex || '' }; }).concat(local), at: Date.now() };
+    RO = { tid: t.id, tname: t.name || '', teams: tm.docs.map(d => ({ id: d.id, name: d.data().name || d.id })), players: ps.docs.map(d => { const x = d.data(); return { id: d.id, teamId: x.teamId, no: String(x.no ?? ''), name: x.name || '', sex: x.sex || '', bats: x.bats || '' }; }).concat(local), at: Date.now() };
     saveRO(); return true;
   } catch (_) { return false; }
 }
@@ -788,7 +809,7 @@ function matchRow(i, ask) {   // 背號 → 人名：剛好一位自動帶入；
 }
 function nameCell(r, i) {
   if (!r.no) return `<td class="nm" data-nm="${i}"></td>`;
-  if (r.name) return `<td class="nm" data-nm="${i}" title="點一下可改選">${esc(r.name)}${r.pid && String(r.pid).startsWith('L') ? '＊' : ''}</td>`;
+  if (r.name) return `<td class="nm" data-nm="${i}" title="點一下可改選"><span class="nmw"><span class="nmt">${esc(r.name)}${r.pid && String(r.pid).startsWith('L') ? '＊' : ''}</span>${handIn(pOfRow(r))}</span></td>`;
   if (!sh().teamId) return `<td class="nm" data-nm="${i}" style="color:var(--muted)">—</td>`;
   const n = candOf(r).length;
   return n > 1 ? `<td class="nm multi" data-nm="${i}">${n} 人同號▾</td>` : `<td class="nm add" data-nm="${i}">＋新增</td>`;
@@ -800,7 +821,7 @@ function openPL(i) {
   const c = candOf(r), t = RO.teams.find(x => x.id === s.teamId);
   $('pl-title').textContent = `第 ${r.slot} 棒${r.sub ? '（替補）' : ''} #${r.no} 是誰？`;
   $('pl-sub').textContent = c.length > 1 ? `${t.name} 名單上有 ${c.length} 位 #${r.no}，請選一位；都不是就新增。` : c.length ? '點選或新增另一位。' : `${t.name} 名單上沒有 #${r.no}，可以直接新增。`;
-  $('pl-list').innerHTML = c.map(p => `<button type="button" data-pid="${p.id}"${p.id === r.pid ? ' class="sel"' : ''}><span>#${esc(p.no)} ${esc(p.name)}</span><small>${p.sex === 'F' ? '女' : p.sex === 'M' ? '男' : ''}${p.pending ? '・待上傳' : ''}</small></button>`).join('');
+  $('pl-list').innerHTML = c.map(p => `<button type="button" data-pid="${p.id}"${p.id === r.pid ? ' class="sel"' : ''}><span>#${esc(p.no)} ${esc(p.name)}</span><small>${[isF(p) ? '女' : noSex(p) ? '性別未填' : '', HANDT[p.bats] || ''].filter(Boolean).join('・')}${p.pending ? '・待上傳' : ''}</small></button>`).join('');
   $('pl-name').value = ''; $('pl-msg').textContent = ''; $('pl-sex').querySelectorAll('button').forEach(b => b.classList.toggle('sel', b.dataset.sx === PL.sex));
   if (!$('dlg-pl').open) $('dlg-pl').showModal(); setTimeout(() => (c.length ? $('pl-list').querySelector('button') : $('pl-name')).focus(), 30);
 }
@@ -1293,7 +1314,7 @@ async function pqHist(pid, team) {   // 別屆與本屆其他場：隊名或別�
 }
 async function openPQ() {
   const s = sh(), ri = +$('pq').dataset.ri, row = s.rows[ri]; if (!row) return;
-  $('pq-title').textContent = `${row.no ? '#' + row.no + ' ' : ''}${row.name || ''} 落點`;
+  $('pq-title').innerHTML = `${row.no ? '#' + esc(row.no) + ' ' : ''}${esc(row.name || '')}${sexTag(pOfRow(row))} 落點`;
   $('pq-sub').textContent = `${s.team || ''}・讀取歷屆資料中…`;
   $('pq-field').innerHTML = $('field').innerHTML.replace(/<g id="mark">[\s\S]*?<\/g>/, '').replace(/class="cell-z"/g, 'class="cz"'); $('pq-field').setAttribute('viewBox', $('field').getAttribute('viewBox'));
   $('pq-list').innerHTML = ''; $('pq-stat').innerHTML = ''; $('dlg-pq').showModal();

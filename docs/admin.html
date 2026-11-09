@@ -758,7 +758,7 @@ function renderImportDetail() {
   const batNos = new Set((P.pas || []).map(pa => pa.no)), missBat = [...batNos].filter(no => !idOf(no));
   const exist = D.balls.filter(b => b.gameId === u.gameId && b.teamId === u.teamId);
   const inn = P.innings || [], other = g ? ((g.innings || {})[u.side === 'away' ? 'home' : 'away'] || []) : [];
-  const opt = (no, cur) => `<select data-no="${esc(no)}"><option value="">— 未對應 —</option>${roster.sort((a, b) => (+a.no || 0) - (+b.no || 0)).map(p => `<option value="${p.id}"${p.id === cur ? ' selected' : ''}>#${esc(p.no)} ${esc(p.name)}</option>`).join('')}</select>`;
+  const opt = (no, cur) => `<select data-no="${esc(no)}"><option value="">— 未對應 —</option>${roster.sort((a, b) => (+a.no || 0) - (+b.no || 0)).map(p => `<option value="${p.id}"${p.id === cur ? ' selected' : ''}>#${esc(p.no)} ${esc(p.name)}${sexOpt(p)}</option>`).join('')}</select>`;
   const slotOf = no => (P.lineup || []).filter(l => l.no === no).map(l => l.slot + (l.sub ? '（替）' : '')).join('、');
   box.innerHTML = `<div class="ph"><h2>第 ${esc((g && g.gameNo) || u.gameNo || '')} 場｜${esc(teamName(u.teamId))}（${u.side === 'away' ? '先攻' : '後攻'}）</h2><span class="badge ${(UPS[u.status] || [])[1] || ''}">${(UPS[u.status] || [u.status])[0]}</span></div>
   <div class="pb">
@@ -1032,7 +1032,7 @@ async function renderXP() {
     return { p, cands, st, todo };
   }).filter(x => x.cands.length && (showAll || x.todo.length));
   const lbl = { yes: ['已確認', 'ok'], no: ['不是同一人', ''], auto: ['同名自動', ''], ask: ['待確認', 'pending'] };
-  $('xp-list').innerHTML = rows.length ? `<table class="xp"><thead><tr><th>本屆球員</th><th>其他屆的可能人選</th></tr></thead><tbody>${rows.map(({ p, cands, st }) => `<tr><td><b>#${esc(p.no)} ${esc(p.name)}</b></td><td>${cands.map(c => { const s = st(c); return `<div class="xp-c"><span>${esc(c.tname)}・${esc(c.team)}・#${esc(c.no)} <b>${esc(c.name)}</b>・${c.n} 打席</span><span class="badge ${lbl[s][1]}">${lbl[s][0]}</span><span class="xp-b"><button class="ghost sm" type="button" data-p="${p.id}" data-k="${c.tid}/${c.id}" data-v="yes" ${s === 'yes' ? 'disabled' : ''}>是同一人</button><button class="ghost sm" type="button" data-p="${p.id}" data-k="${c.tid}/${c.id}" data-v="no" ${s === 'no' ? 'disabled' : ''}>不是</button></span></div>`; }).join('')}</td></tr>`).join('')}</tbody></table>`
+  $('xp-list').innerHTML = rows.length ? `<table class="xp"><thead><tr><th>本屆球員</th><th>其他屆的可能人選</th></tr></thead><tbody>${rows.map(({ p, cands, st }) => `<tr><td><b>#${esc(p.no)} ${esc(p.name)}</b>${sexTag(p)}</td><td>${cands.map(c => { const s = st(c); return `<div class="xp-c"><span>${esc(c.tname)}・${esc(c.team)}・#${esc(c.no)} <b>${esc(c.name)}</b>${sexTag(c)}・${c.n} 打席</span><span class="badge ${lbl[s][1]}">${lbl[s][0]}</span><span class="xp-b"><button class="ghost sm" type="button" data-p="${p.id}" data-k="${c.tid}/${c.id}" data-v="yes" ${s === 'yes' ? 'disabled' : ''}>是同一人</button><button class="ghost sm" type="button" data-p="${p.id}" data-k="${c.tid}/${c.id}" data-v="no" ${s === 'no' ? 'disabled' : ''}>不是</button></span></div>`; }).join('')}</td></tr>`).join('')}</tbody></table>`
     : `<p class="note" style="margin:0">${showAll ? '這一隊在其他屆別找不到同名或同背號的球員。' : '沒有需要確認的球員（同名且只有一位的會自動對上）。勾選「顯示全部」可查看所有對照。'}</p>`;
 }
 $('xp-team').onchange = renderXP; $('xp-all').onchange = renderXP;

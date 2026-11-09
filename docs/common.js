@@ -109,6 +109,17 @@ const STATUS = { scheduled: '未開賽', live: '比賽中', final: '已結束' }
 const HAND = { R: '右打', L: '左打', S: '左右開弓' };
 const SEX = { M: '男', F: '女' };
 const sexOf = v => /女|^F$|^f$/.test(String(v || '')) ? 'F' : /男|^M$|^m$/.test(String(v || '')) ? 'M' : '';
+/* 例外標示（第四版）：只標少數資訊——女生在背號旁標「女」、左打／左右開弓在姓名後標「左」／「左右」，都用紅色；名單未填性別標灰色「?」；男生、右打不標 */
+const SEXL = { M: '男', F: '女' };
+const isF = p => sexOf(p && p.sex) === 'F';
+const HANDX = { L: '左', S: '左右' };
+const noSex = p => p && !sexOf(p.sex);   // 名單沒填性別：灰色「?」提醒補上
+const femTag = p => isF(p) ? '<span class="xt" title="女生">女</span>' : noSex(p) ? '<span class="xt xu" title="名單未填性別，請到賽務管理後台補上">?</span>' : '';
+const handTag = p => p && HANDX[p.bats] ? `<span class="xt" title="${HAND[p.bats]}">${HANDX[p.bats]}</span>` : '';
+const sexTag = p => femTag(p) + handTag(p);
+const pLab = p => p ? `#${esc(p.no || '—')}${femTag(p)} ${esc(p.name)}${handTag(p)}` : '—';
+const sexTxt = p => [isF(p) ? '女' : noSex(p) ? '性別未填' : '', p && HANDX[p.bats] ? HAND[p.bats] : ''].filter(Boolean).join('・');
+const sexOpt = p => { const t = sexTxt(p); return t ? `（${t}）` : ''; };
 const DIRL = { pull: '拉打', center: '中間', oppo: '推打', foul: '界外' };
 
 /* ---------- 球場幾何與落點分格（Project Scoresheet 格位） ---------- */

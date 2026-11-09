@@ -257,3 +257,8 @@ td.num,th.num{text-align:right}
 .mast-bar .brk ~ .score{margin-left:0}
 .score .tm{max-width:9em}
 @media (min-width:1101px){.layout.scorer .field-panel{position:sticky;top:12px}}
+
+/* 例外標示（第四版）：女、左打，紅色 */
+:root { --xt-bg: #fee2e2; --xt: #dc2626; }
+.xt { display: inline-flex; align-items: center; justify-content: center; height: 1.45em; padding: 0 .28em; margin: 0 .1em 0 .3em; border-radius: 5px; font-size: .78em; font-weight: 800; line-height: 1; vertical-align: .1em; white-space: nowrap; background: var(--xt-bg); color: var(--xt); }
+.xt.xu { background: #eef0f3; color: #8a94a3; }
