@@ -330,7 +330,7 @@ button.sm,label.sm{min-height:30px;padding:3px 10px;font-size:12px;cursor:pointe
         <div class="ph"><h2>歷史落點 CSV 匯入</h2><div class="inn-row" style="gap:6px"><button class="ghost" type="button" id="hx-tpl">下載範本</button><label class="primary" for="hx-file" style="cursor:pointer">選擇 CSV</label><input id="hx-file" type="file" accept=".csv,.txt" hidden></div></div>
         <div class="pb">
           <p class="note" id="hx-target" style="margin:0"></p>
-          <p class="note" style="margin:0">把過去的紙本紀錄整理成 CSV 一次匯入。欄位：日期、場次、隊伍、對手、先後攻、局、棒次、背號、姓名、結果、落點、打點（必填：日期、隊伍、背號或姓名、結果）。結果與落點用紀錄表代號，例如 1B、F、K、HR，落點 78、8D、108XD；三振、保送落點留空。沒有的球隊、場次與球員會自動建立；同一份檔案重複匯入不會重複。</p>
+          <p class="note" style="margin:0">把過去的紙本紀錄整理成 CSV 一次匯入。欄位：日期、場次、隊伍、對手、先後攻、局、棒次、背號、姓名、結果、落點、打點、左右打（必填：日期、隊伍、背號或姓名、結果）。左右打填 左、右 或 左右，可留空；有填的會同步更新球隊名單。結果與落點用紀錄表代號，例如 1B、F、K、HR，落點 78、8D、108XD；三振、保送落點留空。沒有的球隊、場次與球員會自動建立；同一份檔案重複匯入不會重複。</p>
           <div id="hx-preview" class="hx-preview"></div>
           <div><b style="font-size:14px">已匯入的批次</b><div class="tbl-wrap" id="hx-batches" style="max-height:240px;margin-top:6px"></div></div>
         </div>
@@ -842,7 +842,9 @@ $('user-rows').addEventListener('change', e => {
 });
 
 /* ================= 歷史資料：歷史落點 CSV 匯入・球員跨屆對照・封存與備份 ================= */
-const HCOLS = ['日期', '場次', '隊伍', '對手', '先後攻', '局', '棒次', '背號', '姓名', '結果', '落點', '打點'];
+const HCOLS = ['日期', '場次', '隊伍', '對手', '先後攻', '局', '棒次', '背號', '姓名', '結果', '落點', '打點', '左右打'];
+const batsCode = s => { const v = String(s || '').trim().toUpperCase(); return /^(左右|兩|S|SWITCH)/.test(v) ? 'S' : /^(左|L)/.test(v) ? 'L' : /^(右|R)/.test(v) ? 'R' : ''; };
+const BATS_TXT = { L: '左', R: '右', S: '左右' };
 const HIS = { rows: [], file: '', xteam: '', ext: null, extKey: '' };
 function parseCSVText(txt) {   // 支援引號、逗號與換行
   const out = []; let row = [], cur = '', q = false; txt = String(txt).replace(/^﻿/, '');
@@ -876,9 +878,10 @@ function readHistCSV(txt, fname) {
   HIS.rows = rows.map((c, i) => {
     const g = k => ix(k) >= 0 ? (c[ix(k)] || '').trim() : '';
     const r = { line: i + 2, date: normDate(g('日期')), gameNo: g('場次'), team: g('隊伍'), opp: g('對手'), side: /後/.test(g('先後攻')) ? 'home' : 'away',
-      inn: parseInt(g('局'), 10) || 1, slot: parseInt(g('棒次'), 10) || null, no: normNo(g('背號').replace('#', '')), name: g('姓名'), res: resCode(g('結果')), zone: g('落點').toUpperCase().replace(/\s/g, ''), rbi: parseInt(g('打點'), 10) || 0, err: [] };
+      inn: parseInt(g('局'), 10) || 1, slot: parseInt(g('棒次'), 10) || null, no: normNo(g('背號').replace('#', '')), name: g('姓名'), res: resCode(g('結果')), zone: g('落點').toUpperCase().replace(/\s/g, ''), rbi: parseInt(g('打點'), 10) || 0, bats: batsCode(g('左右打')), err: [] };
     if (!r.date) r.err.push('日期格式不對'); if (!r.team) r.err.push('沒有隊伍'); if (!r.no && !r.name) r.err.push('沒有背號與姓名');
     if (!SHEET_RES[r.res]) r.err.push(`結果「${g('結果')}」無法辨識`);
+    if (g('左右打') && !r.bats) r.err.push(`左右打「${g('左右打')}」請填 左、右 或 左右`);
     if (r.zone && !sheetZoneXY(r.zone)) r.err.push(`落點「${r.zone}」不是紀錄表格位`);
     const sk = [r.date, r.gameNo, r.team, r.opp, r.inn, r.slot, r.no, r.res, r.zone].join('|'); r.seq = seq[sk] = (seq[sk] || 0) + 1;   // 同一局同一人同結果出現兩次也分得開
     r.key = hkey(r); return r;
@@ -898,7 +901,9 @@ function histPlan() {
   const findP = r => { const t = tByName(r.team); if (!t) return null; const R = D.players.filter(p => p.teamId === t.id);
     return (r.name && R.find(p => p.name === r.name)) || (r.no && R.filter(p => normNo(p.no) === r.no).length === 1 && !r.name ? R.find(p => normNo(p.no) === r.no) : null) || null; };
   const newPlayers = [...new Map(go.filter(r => !findP(r)).map(r => [pk(r), r])).values()];
-  return { ok, dup, go, newTeams, newGames, newPlayers, tByName, gk, findGame, pk, findP };
+  const batsOf = r => (ok.find(x => x.bats && pk(x) === pk(r)) || {}).bats || '';   // 同一位球員在檔案中任一列填的左右打
+  const updBats = [...new Map(ok.filter(r => r.bats).map(r => [findP(r), r]).filter(([p, r]) => p && (p.bats || 'R') !== batsOf(r))).entries()].map(([p, r]) => ({ p, bats: batsOf(r) }));
+  return { ok, dup, go, newTeams, newGames, newPlayers, tByName, gk, findGame, pk, findP, batsOf, updBats };
 }
 function renderHist() {
   const t = curTour(); if (!$('hx-target')) return;
@@ -909,6 +914,7 @@ function renderHist() {
     const P = histPlan(), bad = HIS.rows.filter(r => r.err.length);
     box.innerHTML = `<div class="hx-sum"><span>檔案 <b>${esc(HIS.file)}</b></span><span>共 <b>${HIS.rows.length}</b> 列</span><span>可匯入 <b>${P.go.length}</b> 個打席</span>${P.dup.length ? `<span>已匯入過 <b>${P.dup.length}</b> 列（略過）</span>` : ''}${bad.length ? `<span style="color:var(--r1)">有問題 <b>${bad.length}</b> 列（不匯入）</span>` : ''}</div>
       ${P.newTeams.length || P.newGames.length || P.newPlayers.length ? `<div class="note">匯入時會自動新增：${P.newTeams.length ? `球隊 ${P.newTeams.length} 隊（${P.newTeams.map(esc).join('、')}）` : ''}${P.newGames.length ? `${P.newTeams.length ? '；' : ''}場次 ${P.newGames.length} 場` : ''}${P.newPlayers.length ? `；球員 ${P.newPlayers.length} 位` : ''}。</div>` : ''}
+      ${P.updBats.length ? `<div class="note">會更新球隊名單的左右打：${P.updBats.map(u => `#${esc(u.p.no)} ${esc(u.p.name)} → ${BATS_TXT[u.bats]}打`).join('、')}</div>` : ''}
       ${bad.length ? `<div class="tbl-wrap" style="max-height:220px"><table><thead><tr><th>列</th><th>隊伍</th><th>背號</th><th>姓名</th><th>結果</th><th>落點</th><th>問題</th></tr></thead><tbody>${bad.map(r => `<tr><td>${r.line}</td><td>${esc(r.team)}</td><td>${esc(r.no)}</td><td>${esc(r.name)}</td><td>${esc(r.res)}</td><td>${esc(r.zone)}</td><td style="color:var(--r1)">${r.err.join('；')}</td></tr>`).join('')}</tbody></table></div>` : ''}
       <div class="inn-row"><button class="primary" type="button" id="hx-go" ${!P.go.length || tourLocked() ? 'disabled' : ''}>匯入 ${P.go.length} 個打席</button><button class="ghost" type="button" id="hx-clear">取消</button>${tourLocked() ? '<span class="note">本屆已封存，請先解除封存</span>' : ''}</div>`;
   }
@@ -927,7 +933,8 @@ async function doHistImport() {
     for (const n of P.newTeams) { const ref = await col(U.tid, 'teams').add({ name: n, group: '', histBatch: batch }); teamId[n] = ref.id; }
     const tid = n => (P.tByName(n) || {}).id || teamId[n];
     const pid = {}, pmeta = {};
-    for (const r of P.newPlayers) { const d = { teamId: tid(r.team), no: r.no || '', name: r.name || ('#' + r.no), sex: '', bats: 'R', histBatch: batch }; const ref = await col(U.tid, 'players').add(d); pid[P.pk(r)] = ref.id; pmeta[ref.id] = d; }
+    for (const r of P.newPlayers) { const d = { teamId: tid(r.team), no: r.no || '', name: r.name || ('#' + r.no), sex: '', bats: P.batsOf(r) || 'R', histBatch: batch }; const ref = await col(U.tid, 'players').add(d); pid[P.pk(r)] = ref.id; pmeta[ref.id] = d; }
+    for (const u of P.updBats) { await col(U.tid, 'players').doc(u.p.id).update({ bats: u.bats }); u.p.bats = u.bats; }
     const gid = {};
     for (const r of P.newGames) {
       const a = tid(r.team), o = r.opp ? tid(r.opp) : '';
@@ -964,10 +971,10 @@ async function delHistBatch(id) {
 }
 function histTemplate() {
   saveFile('歷史落點匯入範本.csv', toCSV([HCOLS,
-    ['2024/10/19', '12', '國立臺北科技大學（北科狼）', '淡江大學', '先攻', '1', '1', '7', '呂朝福', '1B', '78', '0'],
-    ['2024/10/19', '12', '國立臺北科技大學（北科狼）', '淡江大學', '先攻', '1', '2', '55', '卓建男', 'F', '8D', '0'],
-    ['2024/10/19', '12', '國立臺北科技大學（北科狼）', '淡江大學', '先攻', '1', '3', '51', '李明儒', 'K', '', '0'],
-    ['2024/10/19', '12', '國立臺北科技大學（北科狼）', '淡江大學', '先攻', '2', '4', '1', '黃復隆', 'HR', '108XD', '2']]));
+    ['2024/10/19', '12', '國立臺北科技大學（北科狼）', '淡江大學', '先攻', '1', '1', '7', '呂朝福', '1B', '78', '0', '右'],
+    ['2024/10/19', '12', '國立臺北科技大學（北科狼）', '淡江大學', '先攻', '1', '2', '55', '卓建男', 'F', '8D', '0', '右'],
+    ['2024/10/19', '12', '國立臺北科技大學（北科狼）', '淡江大學', '先攻', '1', '3', '51', '李明儒', 'K', '', '0', '左'],
+    ['2024/10/19', '12', '國立臺北科技大學（北科狼）', '淡江大學', '先攻', '2', '4', '1', '黃復隆', 'HR', '108XD', '2', '右']]));
 }
 
 /* ---- 匯出：本屆打席 CSV（與匯入範本同格式，可再匯入）＋完整備份 JSON ---- */
@@ -977,7 +984,7 @@ function exportBallsCSV() {
   const rows = [HCOLS].concat([...D.balls].sort((a, b) => (a.at || 0) - (b.at || 0)).map(b => {
     const g = D.games.find(x => x.id === b.gameId) || {}, d = tpe(g.scheduledAt), home = g.homeId === b.teamId, opp = home ? g.awayId : g.homeId;
     const p = D.players.find(x => x.id === b.batterId);
-    return [d ? `${d.y}/${String(d.m).padStart(2, '0')}/${String(d.d).padStart(2, '0')}` : '', g.gameNo || '', teamName(b.teamId), opp ? teamName(opp) : '', home ? '後攻' : '先攻', b.inning || '', b.slot || '', p ? p.no : (b.batterNo || ''), p ? p.name : (b.batterName || ''), toSheetRes(b), b.zone || '', (b.run && b.run.rbi) || 0];
+    return [d ? `${d.y}/${String(d.m).padStart(2, '0')}/${String(d.d).padStart(2, '0')}` : '', g.gameNo || '', teamName(b.teamId), opp ? teamName(opp) : '', home ? '後攻' : '先攻', b.inning || '', b.slot || '', p ? p.no : (b.batterNo || ''), p ? p.name : (b.batterName || ''), toSheetRes(b), b.zone || '', (b.run && b.run.rbi) || 0, p ? BATS_TXT[p.bats || 'R'] : ''];
   }));
   saveFile(`${t.name}_打席紀錄.csv`, toCSV(rows)); toast(`已匯出 ${rows.length - 1} 個打席`);
 }
