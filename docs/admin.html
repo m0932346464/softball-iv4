@@ -862,7 +862,7 @@ function saveFile(name, text, type) {   // 下載檔案（Excel 開 CSV 需要 B
   a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 const normDate = s => { const m = String(s || '').match(/(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/); return m ? `${m[1]}/${String(+m[2]).padStart(2, '0')}/${String(+m[3]).padStart(2, '0')}` : ''; };
-const resCode = s => { const v = String(s || '').trim().toUpperCase().replace('１', '1').replace('２', '2').replace('３', '3'); return { '一安': '1B', '二安': '2B', '三安': '3B', '全壘打': 'HR', '保送': 'BB', '四壞': 'BB', '三振': 'K' }[s] || v; };
+const resCode = s => { const v = String(s || '').trim().toUpperCase().replace('１', '1').replace('２', '2').replace('３', '3'); return { '一安': '1B', '二安': '2B', '三安': '3B', '全壘打': 'HR', '保送': 'BB', '四壞': 'BB', '三振': 'K', '高犧': 'FS', '滾犧': 'GS', SF: 'FS' }[s] || { SF: 'FS' }[v] || v; };   // 紙本說明欄寫 SF，系統代號是 FS
 const hkey = r => [r.date, r.gameNo, r.team, r.opp, r.inn, r.slot, r.no, r.res, r.zone, r.seq].join('|');
 function tourLocked() { return !!(curTour() && curTour().archived); }
 
