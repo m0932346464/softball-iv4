@@ -432,6 +432,7 @@ if ('serviceWorker' in navigator) {
 </dialog>
 <dialog id="dlg-new" class="ngbox" style="width:620px"><h2>新增一場比賽</h2>
   <p style="margin:0;color:var(--muted);font-size:15px">一位紀錄員記錄攻守雙方：建立後有「先攻」「後攻」兩張表，三人出局自動換邊。背號會自動帶入該隊最近一場的打序。</p>
+  <label>賽事<select id="ng-tid"><option value="">載入中…</option></select></label>
   <label>賽程場次<select id="ng-game"><option value="">— 從賽程選（選了自動帶入雙方並連結本場）—</option></select></label>
   <div id="ng-who" hidden><div class="ngq">誰先攻？<small>賽程只排對戰組合，請依現場猜拳／擲硬幣結果點選</small></div><div class="ngwho" id="ng-who-btns"></div></div>
   <div id="ng-manual"><label>先攻隊伍<input id="ng-away" list="dl-team" autocomplete="off" placeholder="輸入或從清單選"></label>
@@ -867,6 +868,24 @@ function fillTeamList() { $('dl-team').innerHTML = RO.teams.map(t => `<option va
 
 /* ---------- 一場比賽記雙方：先攻／後攻兩張表配對，三人出局自動換邊 ---------- */
 let NG = { games: [] };
+/* 選賽事：賽程場次與隊伍清單都跟著切換（名單存在這台平板，離線也能用上次選的賽事） */
+async function ngLoadTours() {
+  const sel = $('ng-tid');
+  if (!UPFB) { sel.innerHTML = RO.tid ? `<option value="${esc(RO.tid)}">${esc(RO.tname || '目前賽事')}</option>` : '<option value="">（離線，無法載入賽事）</option>'; return; }
+  try {
+    const ts = (await UPFB.db.collection('tournaments').get()).docs.map(d => Object.assign({ id: d.id }, d.data()))
+      .sort((a, b) => (!!a.archived - !!b.archived) || String(b.startDate || '').localeCompare(String(a.startDate || '')));
+    sel.innerHTML = ts.map(t => `<option value="${t.id}"${t.id === RO.tid ? ' selected' : ''}>${esc(t.name || t.id)}${t.archived ? '（已封存）' : ''}</option>`).join('');
+  } catch (_) { sel.innerHTML = `<option value="${esc(RO.tid)}">${esc(RO.tname || '目前賽事')}</option>`; }
+}
+$('ng-tid') && ($('ng-tid').onchange = async e => {
+  const id = e.target.value; if (!id || id === RO.tid) return;
+  e.target.disabled = true; $('ng-game').innerHTML = '<option value="">載入中…</option>';
+  const ok = await loadRoster(id); e.target.disabled = false;
+  if (!ok) { toast('載入賽事失敗，請確認網路'); return; }
+  fillTeamList(); NG.first = ''; ngWho(); await ngLoadGames();
+  toast(`已切換到「${RO.tname}」：${RO.teams.length} 隊`);
+});
 async function ngLoadGames() {
   const sel = $('ng-game'); sel.innerHTML = '<option value="">— 從賽程選（選了自動帶入雙方並連結本場）—</option>';
   if (!UPFB || !RO.tid) return;
@@ -1522,7 +1541,7 @@ $('pick-close').onclick = () => $('dlg-pick').close();
 $('new').onclick = () => {
   const list = Object.values(DB.sheets).filter(x => x.rows.some(r => r.no)).sort((a, b) => b.updated - a.updated).slice(0, 8);
   $('copy-list').innerHTML = list.length ? list.map(x => `<button type="button" data-copy="${x.id}"><span>複製背號：${x.team || '（未填隊伍）'}</span><small>${x.date} ${x.field || ''}</small></button>`).join('') : '<small style="color:var(--muted)">還沒有可複製的紀錄表</small>';
-  $('ng-away').value = ''; $('ng-home').value = ''; NG.first = ''; ngWho(); $('dlg-new').showModal(); ngLoadGames();
+  $('ng-away').value = ''; $('ng-home').value = ''; NG.first = ''; ngWho(); $('dlg-new').showModal(); ngLoadTours(); ngLoadGames();
 };
 $('dlg-cancel').onclick = () => $('dlg-new').close();
 $('dlg-blank').onclick = () => { const s = blankSheet(); DB.sheets[s.id] = s; DB.cur = s.id; undo = []; save(); render(); $('dlg-new').close(); toast('已新增空白紀錄表'); };
