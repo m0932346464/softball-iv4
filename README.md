@@ -208,3 +208,10 @@ firebase emulators:start
 
 ### 待匯入：背號不在名單時直接加入
 - 紀錄員在打擊落點紀錄填了名單上沒有的背號（漏登錄或臨時上場），管理員在「待匯入」對應球員時，該列會出現「名單沒有 #N，直接加入」：姓名預填紀錄表上寫的，選性別、打擊後按「＋ 加入名單並對應」，球員就加入本隊名單並自動對應，不必跳到「球隊名單」再回來。
+
+### PWA（加入主畫面、離線開啟）
+
+- `docs/manifest.webmanifest`：App 名稱、圖示（`docs/icons/` 內的 PNG，iPhone 用 `apple-touch-icon.png`）。
+- `docs/sw.js`：離線外殼。頁面先抓網路，沒訊號時用手機上存的版本；CSS、JS、Firebase 程式庫先用快取再背景更新。Firestore 資料不經過這裡，仍由 `enablePersistence` 處理離線寫入。
+- 每頁 `<head>` 都會註冊 `sw.js`。**改版後若手機沒更新，把 `sw.js` 裡的 `VERSION` 加一再推上去。**
+- 紀錄員要在有網路時先打開一次，之後才能離線開啟。
