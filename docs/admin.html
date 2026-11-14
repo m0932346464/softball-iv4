@@ -259,8 +259,8 @@ if ('serviceWorker' in navigator) {
           </div>
           <button class="primary" type="submit">新增場次</button>
           <div class="inn-row" style="border-top:1px solid var(--rule);padding-top:12px">
-            <span class="note" style="flex:1 1 280px">整批匯入：CSV 欄位為 場次編號、日期時間（2026/10/17 07:00）、場地、輪次、客隊、主隊。隊名需與「球隊名單」相同；同編號的場次會更新。</span>
-            <label class="ghost" for="games-file" style="cursor:pointer">選擇 CSV 並匯入場次</label>
+            <span class="note" style="flex:1 1 280px">整批匯入：CSV 欄位為 場次編號、日期時間（2026/10/17 07:00）、場地、輪次、客隊、主隊。隊名需與「球隊名單」相同；同編號的場次會更新。「匯出 CSV」用同樣格式，另附比分與狀態。</span>
+            <label class="ghost" for="games-file" style="cursor:pointer">選擇 CSV 並匯入場次</label><button class="ghost" type="button" id="games-export" title="下載全部場次（前六欄與匯入同格式，可直接再匯入）">匯出 CSV</button>
             <input id="games-file" type="file" accept=".csv,.txt" hidden>
           </div>
         </form>
@@ -578,6 +578,19 @@ $('roster-rows').addEventListener('click', e => {
   ask(`刪除球員 #${p.no} ${p.name}？已記錄的落點會保留。`, '確認刪除', () => col(U.tid, 'players').doc(id).delete());
 });
 $('imp-file').onchange = e => { const f = e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => { $('imp-text').value = String(rd.result).replace(/^﻿/, ''); toast(`已讀入 ${f.name}，確認後按「匯入」`); }; rd.readAsText(f, 'utf-8'); e.target.value = ''; };
+/* 匯出賽程：前六欄與「匯入場次」相同，可直接再匯入；後面附比分與狀態（匯入時會忽略） */
+$('games-export').onclick = () => {
+  const t = curTour(); if (!t) { toast('請先選擇賽事'); return; }
+  if (!D.games.length) { toast('這個賽事還沒有場次'); return; }
+  const p2 = n => String(n).padStart(2, '0'), sec = g => (g.scheduledAt && g.scheduledAt.seconds) || 0;
+  const rows = [['場次編號', '日期時間', '場地', '輪次', '客隊', '主隊', '客隊得分', '主隊得分', '狀態']];
+  for (const g of [...D.games].sort((a, b) => sec(a) - sec(b))) {
+    const d = tpe(g.scheduledAt);
+    rows.push([g.gameNo || '', d ? `${d.y}/${p2(d.m)}/${p2(d.d)} ${d.hh}:${d.mm}` : '', g.field || '', g.round || '', g.awayId ? teamName(g.awayId) : '', g.homeId ? teamName(g.homeId) : '',
+      g.awayScore ?? '', g.homeScore ?? '', STATUS[g.status] || '']);
+  }
+  saveFile(`${t.name}_賽程比分.csv`, toCSV(rows)); toast(`已匯出 ${rows.length - 1} 場`);
+};
 $('games-file').onchange = e => {
   const f = e.target.files[0]; if (!f) return; e.target.value = '';
   if (!U.tid) { toast('請先到「賽事」分頁建立賽事，再匯入'); return; }
