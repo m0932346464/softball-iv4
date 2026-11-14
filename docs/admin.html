@@ -202,7 +202,7 @@ if ('serviceWorker' in navigator) {
     <section class="tabpane split teams-split" data-t="teams" hidden>
       <div class="panel teams-side">
         <div class="ph"><h2>球隊 <span class="note" id="team-count"></span></h2>
-          <div class="inn-row" style="gap:4px"><button class="ghost sm" type="button" id="tm-toggle">＋ 新增</button><label class="ghost sm" for="bulk-file" title="CSV 欄位：球隊、背號、姓名、左右打、組別；沒有的球隊會自動建立">匯入 CSV</label><input id="bulk-file" type="file" accept=".csv,.txt" hidden></div>
+          <div class="inn-row" style="gap:4px"><button class="ghost sm" type="button" id="tm-toggle">＋ 新增</button><label class="ghost sm" for="bulk-file" title="CSV 欄位：球隊、背號、姓名、左右打、性別、組別；沒有的球隊會自動建立">匯入 CSV</label><button class="ghost sm" type="button" id="tm-export" title="下載全部球隊與球員（與匯入同格式，可直接再匯入）">匯出 CSV</button><input id="bulk-file" type="file" accept=".csv,.txt" hidden></div>
         </div>
         <form class="tm-new" id="team-form" hidden>
           <input id="tm-name" required placeholder="新球隊名稱" aria-label="新球隊名稱">
@@ -609,6 +609,21 @@ $('games-file').onchange = e => {
     });
   };
   rd.readAsText(f, 'utf-8');
+};
+/* 匯出球隊名單：欄位與「匯入 CSV」相同，可直接再匯入（例如帶到下一屆） */
+$('tm-export').onclick = () => {
+  const t = curTour(); if (!t) { toast('請先選擇賽事'); return; }
+  if (!D.teams.length) { toast('這個賽事還沒有球隊'); return; }
+  const nk = v => { const n = parseInt(v, 10); return isNaN(n) ? 1e9 : n; };
+  const teams = [...D.teams].sort((a, b) => (a.group || '~').localeCompare(b.group || '~') || a.name.localeCompare(b.name, 'zh-Hant'));
+  const rows = [['球隊', '背號', '姓名', '左右打', '性別', '組別']];
+  let n = 0;
+  for (const tm of teams) {
+    const ps = D.players.filter(p => p.teamId === tm.id).sort((a, b) => nk(a.no) - nk(b.no) || String(a.no).localeCompare(String(b.no)));
+    if (!ps.length) rows.push([tm.name, '', '', '', '', tm.group || '']);
+    for (const p of ps) { rows.push([tm.name, p.no || '', p.name || '', HANDX[p.bats] ? { L: '左', S: '左右' }[p.bats] : '右', SEXL[sexOf(p.sex)] || '', tm.group || '']); n++; }
+  }
+  saveFile(`${t.name}_球隊名單.csv`, toCSV(rows)); toast(`已匯出 ${teams.length} 隊、${n} 位球員`);
 };
 $('bulk-file').onchange = e => {
   const f = e.target.files[0]; if (!f) return; e.target.value = '';
