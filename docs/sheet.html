@@ -1118,7 +1118,12 @@ $('up-ok').onclick = async () => {
   if (UPMODE === 'link' || !sh().link) { const s = sh(), same = s.link && s.link.gid === g.id && s.link.side === UP.side;
     s.link = { tid: UP.tid, gid: g.id, side: UP.side, gameNo: String(g.gameNo || ''), team: UP.teams[g[UP.side + 'Id']] || '', ids: [g.awayId, g.homeId] }; if (!same) s.reported = {};
     const p = partner(s); if (p) { const os = UP.side === 'away' ? 'home' : 'away'; p.link = { tid: UP.tid, gid: g.id, side: os, gameNo: String(g.gameNo || ''), team: UP.teams[g[os + 'Id']] || '', ids: [g.awayId, g.homeId] }; if (!same) p.reported = {}; }
-    save(); render(); }
+    /* 連結後把隊伍、賽事、先後攻、球場帶進紀錄表，並換成該賽事的名單 */
+    const fillT = (x, sd) => { const id = g[sd + 'Id']; x.team = UP.teams[id] || x.team; x.teamId = id; x.tid = UP.tid; x.side = sd; if (g.field && !x.field) x.field = g.field; };
+    fillT(s, UP.side); if (p) fillT(p, UP.side === 'away' ? 'home' : 'away');
+    if (RO.tid !== UP.tid && await loadRoster(UP.tid)) fillTeamList();
+    s.rows.forEach((r, i) => { if (r.no && !r.name) autoName(i); });
+    save(); render(); teamBadge(); }
   if (UPMODE === 'link') { $('dlg-up').close(); toast(`已連結第 ${g.gameNo} 場（${UP.side === 'away' ? '先攻' : '後攻'}），每局結束會自動回報比分`); reportScores(); return; }
   if ((UP.tours || []).some(t => t.id === UP.tid && t.archived)) { upMsg('這一屆賽事已封存，不能再上傳；需要更正請聯絡管理員解除封存', true); return; }
   await pushPending();
