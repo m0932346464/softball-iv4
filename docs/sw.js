@@ -3,7 +3,7 @@
    - CSS / JS / 圖示 / Firebase 程式庫 / 字型：先用手機上的，背景再更新
    - Firestore、登入等資料請求不經過這裡，由 Firebase 自己的離線暫存處理
    改版時把 VERSION 加一，舊快取會自動清掉。 */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = 'softball-' + VERSION;
 const BASE = new URL('./', self.location).href;
 const abs = (p) => new URL(p, BASE).href;
