@@ -496,7 +496,7 @@ function renderRoster() {
   rosterPending = false;
   const R = D.players.filter(p => p.teamId === U.team).sort((a, b) => (+a.no || 999) - (+b.no || 999));
   const hs = v => ['R', 'L', 'S'].map(k => `<option value="${k}" ${(v || 'R') === k ? 'selected' : ''}>${HAND[k]}</option>`).join('');
-  $('roster-rows').innerHTML = R.length ? R.map(p => `<tr data-id="${p.id}" class="${p.sex === 'F' ? 'fem' : ''}${p.bats === 'L' ? ' lefty' : ''}"><td><input data-k="no" inputmode="numeric" value="${esc(p.no)}" aria-label="背號"></td><td><input data-k="name" value="${esc(p.name)}" aria-label="姓名"></td><td><select data-k="sex" aria-label="性別"><option value="" ${!p.sex ? 'selected' : ''}>—</option><option value="M" ${p.sex === 'M' ? 'selected' : ''}>男</option><option value="F" ${p.sex === 'F' ? 'selected' : ''}>女</option></select></td><td><select data-k="bats" aria-label="打擊">${hs(p.bats)}</select></td><td><button class="del" type="button" data-id="${p.id}" aria-label="刪除球員">×</button></td></tr>`).join('')
+  $('roster-rows').innerHTML = R.length ? R.map(p => `<tr data-id="${p.id}" class="${p.sex === 'F' ? 'fem' : ''}${p.bats === 'L' || p.bats === 'S' ? ' lefty' : ''}"><td><input data-k="no" inputmode="numeric" value="${esc(p.no)}" aria-label="背號"></td><td><input data-k="name" value="${esc(p.name)}" aria-label="姓名"></td><td><select data-k="sex" aria-label="性別"><option value="" ${!p.sex ? 'selected' : ''}>—</option><option value="M" ${p.sex === 'M' ? 'selected' : ''}>男</option><option value="F" ${p.sex === 'F' ? 'selected' : ''}>女</option></select></td><td><select data-k="bats" aria-label="打擊">${hs(p.bats)}</select></td><td><button class="del" type="button" data-id="${p.id}" aria-label="刪除球員">×</button></td></tr>`).join('')
     : '<tr><td colspan="5" class="empty">尚無球員，用最下方一列新增，或在下方貼上名單匯入</td></tr>';
 }
 $('team-list').addEventListener('click', e => { const id = e.target.closest('button')?.dataset.id; if (id) { U.team = id; saveU(); renderRoster(); } });
@@ -547,7 +547,7 @@ $('roster-rows').addEventListener('change', async e => {
   if (k === 'name' && !v) { e.target.value = p.name; toast('姓名不可空白'); return; }
   if ((p[k] || (k === 'bats' ? 'R' : '')) === v) return;
   if (k === 'sex') e.target.closest('tr').classList.toggle('fem', v === 'F');
-  if (k === 'bats') e.target.closest('tr').classList.toggle('lefty', v === 'L');
+  if (k === 'bats') e.target.closest('tr').classList.toggle('lefty', v === 'L' || v === 'S');
   try { await col(U.tid, 'players').doc(p.id).update({ [k]: v }); p[k] = v; flashSaved(`已儲存 #${p.no} ${p.name}`); } catch (err) { toast(friendlyError(err)); }
 });
 $('roster-rows').addEventListener('keydown', e => {
