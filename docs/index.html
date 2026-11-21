@@ -737,6 +737,7 @@ if ('serviceWorker' in navigator) {
         <select id="scope" aria-label="落點顯示範圍">
           <option value="batterHist">選定球員・歷屆＋本場</option>
           <option value="batterGame">選定球員・本場</option>
+          <option value="batterErr">選定球員・守備失誤落點</option>
           <option value="teamHist">全隊・歷屆＋本場</option>
           <option value="team">全隊・本屆</option>
           <option value="game">全隊・本場</option>
@@ -1243,6 +1244,7 @@ function scopeBalls() {
     case 'teamHist': return D.histBalls.filter(b => b.gameId !== U.gid).concat(D.gameBalls.filter(b => b.teamId === tm));
     case 'batterGame': return D.gameBalls.filter(b => b.batterId === bid);
     case 'batterHist': return batterBalls();
+    case 'batterErr': return errBalls(bp, tm);
     default: return D.gameBalls.filter(b => b.teamId === tm);
   }
 }
@@ -1387,10 +1389,13 @@ function renderScout() {
 }
 /* 防守（模擬）：這位球員守備時的失誤、擔任投手時的對戰數據；資料來自對手打擊的紀錄表（有填守備名單） */
 const DPOSL = { P: '投手', C: '捕手', '1B': '一壘', '2B': '二壘', '3B': '三壘', SS: '游擊', LF: '左外', LCF: '左中', RCF: '右中', RF: '右外' };
+function defPool(tm) { return (D.defAll || []).filter(b => b.gameId !== U.gid).concat(D.gameBalls.filter(b => b.defTeamId === tm)); }
+const errOf = (p, b) => b.result === 'E' && (b.errId === p.id || (b.errName && b.errName === p.name));
+function errBalls(p, tm) { return p ? defPool(tm).filter(b => errOf(p, b)) : []; }
 function defHTML(p, tm) {
-  const all = (D.defAll || []).filter(b => b.gameId !== U.gid).concat(D.gameBalls.filter(b => b.defTeamId === tm));
+  const all = defPool(tm);
   const cur = b => b.gameId === U.gid;
-  const mineE = b => b.result === 'E' && (b.errId === p.id || (b.errName && b.errName === p.name)), mineP = b => b.pitcherId === p.id || (b.pitName && b.pitName === p.name);
+  const mineE = b => errOf(p, b), mineP = b => b.pitcherId === p.id || (b.pitName && b.pitName === p.name);
   const E = all.filter(mineE).sort((a, b) => (b.gsort || tsv(b)) - (a.gsort || tsv(a))), Pb = all.filter(mineP);
   const seen = all.length > 0;
   const byPos = {}; E.forEach(b => byPos[b.errPos] = (byPos[b.errPos] || 0) + 1);
@@ -1398,7 +1403,7 @@ function defHTML(p, tm) {
   let h = `<div class="st-grp"><b>防守失誤</b><small>${seen ? `合計 ${E.length} 次（本場 ${eg}・歷屆 ${E.length - eg}）` : '還沒有守備紀錄'}</small>`;
   if (!seen) h += `<p class="note" style="margin:4px 0 0;font-size:12px">對手打擊的紀錄表填了「🧤 守備」名單並上傳匯入後，這裡會出現個人失誤與投手數據</p>`;
   else if (!E.length) h += `<p class="note" style="margin:4px 0 0;font-size:12px">沒有失誤紀錄 👍</p>`;
-  else h += `<div class="lg" style="flex-wrap:wrap">${Object.entries(byPos).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span>${DPOSL[k] || '未指定'} ${n}</span>`).join('')}</div>
+  else h += `<button type="button" class="ghost sm" id="err-map" style="margin:4px 0">${U.scope === 'batterErr' ? '✓ 球場圖顯示失誤落點中（切回打擊）' : '在球場圖看失誤落點'}</button><div class="lg" style="flex-wrap:wrap">${Object.entries(byPos).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span>${DPOSL[k] || '未指定'} ${n}</span>`).join('')}</div>
     <div style="display:flex;flex-direction:column;gap:2px;margin-top:4px;font-size:12px">${E.slice(0, 6).map(b => `<span>${cur(b) ? '<b>本場</b>' : esc(b.glabel || b.tname || '')}　${b.inning || ''} 局　${DPOSL[b.errPos] || ''}${b.zone ? '・落點 ' + esc(b.zone) : ''}　打者 #${esc(b.batterNo || '')}</span>`).join('')}${E.length > 6 ? `<span class="note">另有 ${E.length - 6} 次</span>` : ''}</div>`;
   h += '</div>';
   if (Pb.length) {
@@ -1420,6 +1425,7 @@ function fitGames() {
   if (more) { more.hidden = n === bl.length; more.textContent = `另有 ${bl.length - n} 場較早的紀錄未顯示`; }
 }
 addEventListener('resize', () => requestAnimationFrame(fitGames));
+document.addEventListener('click', e => { if (e.target.id !== 'err-map') return; U.scope = U.scope === 'batterErr' ? 'batterHist' : 'batterErr'; saveU(); renderControls(); renderData(); });
 document.addEventListener('click', e => { if (e.target.id !== 'solo-off') return; U.solo = ''; saveU(); applyFit(); renderData(); });
 $('sc-q').addEventListener('input', e => { U.scq = e.target.value; saveU(); renderScout(); });
 $('sc-list').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (!b) return; { const pp = pById(b.dataset.p); if (pp && pp.teamId !== batTeamId()) { goPlayer(pp); return; } } U.pick = b.dataset.p; if (!U.scope.startsWith('batter')) U.scope = 'batterHist'; saveU(); renderControls(); subscribeScope(); });

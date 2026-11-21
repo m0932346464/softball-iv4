@@ -322,6 +322,13 @@ if ('serviceWorker' in navigator) {
           <textarea id="csv-fallback" hidden style="width:100%;height:120px;font:12px monospace"></textarea>
         </div>
       </div>
+      <div class="panel">
+        <div class="ph"><h2>個人防守・投手</h2><span class="note">球隊依上方「個人打擊成績」的選擇；資料來自對手打擊紀錄表的「🧤 守備」名單</span></div>
+        <div class="pb" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px">
+          <div class="tbl-wrap" style="max-height:420px"><table><thead><tr><th>守備員</th><th>球隊</th><th class="num">失誤</th><th>守位</th></tr></thead><tbody id="err-rows"></tbody></table></div>
+          <div class="tbl-wrap" style="max-height:420px"><table><thead><tr><th>投手</th><th>球隊</th><th class="num">面對打席</th><th class="num">保送</th><th class="num">三振</th><th class="num">被安打</th><th class="num">失誤上壘</th></tr></thead><tbody id="pit-rows"></tbody></table></div>
+        </div>
+      </div>
     </section>
 
     <!-- 紀錄表待匯入 -->
@@ -787,7 +794,20 @@ function renderStats() {
     return `<div class="lead"><h3>${title}</h3><ol>${top.length ? top.map(r => `<li><span>${esc(r.name)}<small class="note">　${esc(r.team)}</small></span><b>${rate ? fmt3(r[key]) : r[key]}</b></li>`).join('') : '<li><span class="note">尚無資料</span></li>'}</ol></div>`;
   };
   $('lead-note').textContent = `打擊率、上壘率、長打率、OPS 限打席 ≥ ${min}`;
+  renderDefStats();
   $('leaders').innerHTML = board('打擊率', 'avg', q, 1) + board('全壘打', 'HR', all) + board('安打', 'h', all) + board('上壘率', 'obp', q, 1) + board('長打率', 'slg', q, 1) + board('OPS', 'ops', q, 1) + board('壘打數', 'tb', all) + board('四壞', 'BB', all);
+}
+/* 個人防守・投手：失誤記到守備員、每個打席記當時投手（第四版：紀錄表「🧤 守備」） */
+const DPOSL = { P: '投手', C: '捕手', '1B': '一壘', '2B': '二壘', '3B': '三壘', SS: '游擊', LF: '左外', LCF: '左中', RCF: '右中', RF: '右外' };
+function renderDefStats() {
+  const bs = D.balls.filter(b => b.defTeamId && (U.stTeam === 'all' || !U.stTeam || b.defTeamId === U.stTeam));
+  const who = (id, no, name, tid) => { const p = id && D.players.find(x => x.id === id); return p ? `#${esc(p.no)} ${esc(p.name)}` : no ? `#${esc(no)}${name ? ' ' + esc(name) : ''}<small class="note">（未對應）</small>` : '<span class="note">（未填背號）</span>'; };
+  const E = {}; bs.filter(b => b.result === 'E').forEach(b => { const k = b.defTeamId + '|' + (b.errId || '#' + (b.errNo || '')); const o = E[k] || (E[k] = { b, n: 0, pos: {} }); o.n++; o.pos[b.errPos || '?'] = (o.pos[b.errPos || '?'] || 0) + 1; });
+  const er = Object.values(E).sort((a, b) => b.n - a.n);
+  $('err-rows').innerHTML = er.length ? er.map(o => `<tr><td>${who(o.b.errId, o.b.errNo, o.b.errName)}</td><td>${esc(teamName(o.b.defTeamId))}</td><td class="num"><b>${o.n}</b></td><td>${Object.entries(o.pos).map(([k, n]) => `${DPOSL[k] || '未指定'} ${n}`).join('、')}</td></tr>`).join('') : '<tr><td colspan="4" class="empty">尚無失誤紀錄</td></tr>';
+  const P = {}; bs.filter(b => b.pitNo || b.pitcherId).forEach(b => { const k = b.defTeamId + '|' + (b.pitcherId || '#' + b.pitNo); const o = P[k] || (P[k] = { b, pa: 0, BB: 0, K: 0, H: 0, E: 0 }); o.pa++; if (b.result === 'BB') o.BB++; if (b.result === 'K') o.K++; if (['1B', '2B', '3B', 'HR'].includes(b.result)) o.H++; if (b.result === 'E') o.E++; });
+  const pr = Object.values(P).sort((a, b) => b.pa - a.pa);
+  $('pit-rows').innerHTML = pr.length ? pr.map(o => `<tr><td>${who(o.b.pitcherId, o.b.pitNo, o.b.pitName)}</td><td>${esc(teamName(o.b.defTeamId))}</td><td class="num">${o.pa}</td><td class="num"><b>${o.BB}</b></td><td class="num">${o.K}</td><td class="num">${o.H}</td><td class="num">${o.E}</td></tr>`).join('') : '<tr><td colspan="7" class="empty">尚無投手紀錄</td></tr>';
 }
 $('bat-head').addEventListener('click', e => { const k = e.target.closest('th')?.dataset.k; if (!k) return; U.sortDir = U.sortK === k ? -U.sortDir : (['no', 'name', 'team'].includes(k) ? 1 : -1); U.sortK = k; saveU(); renderStats(); });
 $('st-team').onchange = e => { U.stTeam = e.target.value; saveU(); renderStats(); };
