@@ -20,6 +20,9 @@
 .btn-danger{background:var(--r1);color:#fff;border:0;border-radius:6px;padding:7px 14px;font-size:13px}
 .tabs.main{background:var(--surface);border:1px solid var(--rule);border-radius:8px}
 #game-rows tr.focus td{background:#fff3c4}
+#game-rows .gedit{border:1px solid var(--line);background:transparent;border-radius:6px;padding:2px 8px;font-size:12px;margin-right:6px;cursor:pointer;color:inherit}
+#game-rows tr.editing td{background:#e7f1fb}
+#game-form.editing{outline:2px solid #2f6fd6;outline-offset:-2px;border-radius:12px}
 #game-rows tr.focus td:first-child{box-shadow:inset 4px 0 0 #e0a100}
 .te-alias input{width:220px}
 @media (max-width:900px){.te-alias input{width:140px}}
@@ -248,7 +251,7 @@ if ('serviceWorker' in navigator) {
     <!-- 賽程比分 -->
     <section class="tabpane" data-t="games" hidden style="display:flex;flex-direction:column;gap:14px">
       <div class="panel">
-        <div class="ph"><h2>新增場次</h2></div>
+        <div class="ph"><h2 id="gf-title">新增場次</h2></div>
         <form class="pb" id="game-form">
           <div class="form-grid">
             <label for="gf-no">場次編號<input id="gf-no" placeholder="例：12"></label>
@@ -258,7 +261,7 @@ if ('serviceWorker' in navigator) {
             <label for="gf-away">客隊（先攻）<select id="gf-away" required></select></label>
             <label for="gf-home">主隊（後攻）<select id="gf-home" required></select></label>
           </div>
-          <button class="primary" type="submit">新增場次</button>
+          <div style="display:flex;gap:8px"><button class="primary" type="submit" id="gf-submit" style="flex:1">新增場次</button><button class="ghost" type="button" id="gf-cancel" hidden>取消編輯</button></div>
           <div class="inn-row" style="border-top:1px solid var(--rule);padding-top:12px">
             <span class="note" style="flex:1 1 280px">整批匯入：CSV 欄位為 場次編號、日期時間（2026/10/17 07:00）、場地、輪次、客隊、主隊。隊名需與「球隊名單」相同；同編號的場次會更新。「匯出 CSV」用同樣格式，另附比分與狀態。</span>
             <label class="ghost" for="games-file" style="cursor:pointer">選擇 CSV 並匯入場次</label><button class="ghost" type="button" id="games-export" title="下載全部場次（前六欄與匯入同格式，可直接再匯入）">匯出 CSV</button>
@@ -689,20 +692,50 @@ $('imp-go').onclick = async () => {
 /* ---------- 賽程比分 ---------- */
 function renderGames() {
   $('game-rows').innerHTML = D.games.length ? D.games.map(g => `<tr data-id="${g.id}">
-    <td>${esc(g.gameNo || '')}</td><td>${fmtDT(g.scheduledAt)}</td><td>${esc(g.field || '')}</td><td>${esc(g.round || '')}</td>
+    <td style="white-space:nowrap"><button class="gedit" type="button" aria-label="修改場次">修改</button>${esc(g.gameNo || '')}</td><td>${fmtDT(g.scheduledAt)}</td><td>${esc(g.field || '')}</td><td>${esc(g.round || '')}</td>
     <td>${esc(teamName(g.awayId))}</td>
     <td class="num" style="white-space:nowrap"><input class="inline-edit" type="number" min="0" data-k="awayScore" value="${g.awayScore ?? ''}" aria-label="客隊得分"> : <input class="inline-edit" type="number" min="0" data-k="homeScore" value="${g.homeScore ?? ''}" aria-label="主隊得分"></td>
     <td>${esc(teamName(g.homeId))}</td>
     <td><select data-k="status" aria-label="狀態">${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${g.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
     <td><button class="del" type="button" aria-label="刪除場次">×</button></td></tr>`).join('')
     : '<tr><td colspan="9" class="empty">尚無場次</td></tr>';
+  if (editG) { const tr = document.querySelector(`#game-rows tr[data-id="${editG}"]`); if (tr) tr.classList.add('editing'); else gEditEnd(); }
   if (focusG) { const tr = document.querySelector(`#game-rows tr[data-id="${focusG}"]`); if (tr) { tr.classList.add('focus'); setTimeout(() => tr.scrollIntoView({ block: 'center' }), 60); } }
 }
+/* 修改場次：點列首「修改」把該場帶進上方表單，改完按「儲存修改」 */
+let editG = '';
+const dtInput = v => { const t = tpe(v); return t ? `${t.y}-${String(t.m).padStart(2, '0')}-${String(t.d).padStart(2, '0')}T${t.hh}:${t.mm}` : ''; };
+function gEditEnd() {
+  editG = ''; $('game-form').classList.remove('editing'); $('gf-title').textContent = '新增場次'; $('gf-submit').textContent = '新增場次'; $('gf-cancel').hidden = true;
+  $('gf-no').value = ''; $('gf-field').value = ''; $('gf-round').value = ''; $('gf-away').value = ''; $('gf-home').value = ''; $('gf-dt').value = nowTPEInput();
+  document.querySelectorAll('#game-rows tr.editing').forEach(t => t.classList.remove('editing'));
+}
+$('gf-cancel').onclick = gEditEnd;
+$('game-rows').addEventListener('click', e => {
+  if (!e.target.closest('.gedit')) return;
+  const g = D.games.find(x => x.id === e.target.closest('tr').dataset.id); if (!g) return;
+  editG = g.id; $('gf-no').value = g.gameNo || ''; $('gf-dt').value = dtInput(g.scheduledAt); $('gf-field').value = g.field || ''; $('gf-round').value = g.round || '';
+  $('gf-away').value = g.awayId || ''; $('gf-home').value = g.homeId || '';
+  $('gf-title').textContent = `修改場次${g.gameNo ? `（第 ${g.gameNo} 場）` : ''}`; $('gf-submit').textContent = '儲存修改'; $('gf-cancel').hidden = false; $('game-form').classList.add('editing');
+  document.querySelectorAll('#game-rows tr.editing').forEach(t => t.classList.remove('editing')); e.target.closest('tr').classList.add('editing');
+  $('game-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 $('game-form').addEventListener('submit', async e => {
   e.preventDefault();
   const away = $('gf-away').value, home = $('gf-home').value;
   if (!away || !home || away === home) { toast('請選擇兩支不同的球隊'); return; }
   const dt = parseTPE($('gf-dt').value);
+  if (editG) {
+    const g = D.games.find(x => x.id === editG); if (!g) { gEditEnd(); return; }
+    if (!dt || isNaN(dt)) { toast('請填日期時間'); return; }
+    const patch = { gameNo: $('gf-no').value.trim(), scheduledAt: firebase.firestore.Timestamp.fromDate(dt), field: $('gf-field').value.trim(), round: $('gf-round').value.trim(), awayId: away, homeId: home, updatedAt: FB.TS() };
+    const dupNo = patch.gameNo && D.games.some(x => x.id !== g.id && String(x.gameNo || '') === patch.gameNo);
+    const save = async () => { try { await col(U.tid, 'games').doc(g.id).update(patch); toast('已儲存修改'); gEditEnd(); } catch (err) { toast(friendlyError(err)); } };
+    const n = D.balls.filter(b => b.gameId === g.id).length, teamsChanged = g.awayId !== away || g.homeId !== home;
+    const warn = [dupNo ? `已有另一場編號也是 ${patch.gameNo}。` : '', teamsChanged && n ? `這場已有 ${n} 筆打席紀錄，改了對戰隊伍後，紀錄仍算在原本記錄的隊伍。` : '', teamsChanged && (g.awayScore != null || g.homeScore != null) ? '已填的比分不會跟著對調，請確認。' : ''].filter(Boolean).join('');
+    if (warn) ask(`${warn}確定要儲存？`, '確定儲存', save); else save();
+    return;
+  }
   try {
     await col(U.tid, 'games').add({ gameNo: $('gf-no').value.trim(), scheduledAt: firebase.firestore.Timestamp.fromDate(dt), field: $('gf-field').value.trim(), round: $('gf-round').value.trim(), awayId: away, homeId: home, awayScore: null, homeScore: null, status: 'scheduled', createdAt: FB.TS() });
     $('gf-no').value = ''; toast('已新增場次');
