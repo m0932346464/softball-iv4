@@ -536,7 +536,7 @@ function prep(r) {   // 每個打席各自記：sc＝這個打席上壘後有沒
   if (!r.rbi) r.rbi = Array(PA).fill(0);
   if (!r.pr) r.pr = Array(PA).fill(null);
   if (!r.inn) r.inn = Array(PA).fill(0);
-  if (!r.fe) r.fe = Array(PA).fill(''); if (!r.fen) r.fen = Array(PA).fill(''); if (!r.pit) r.pit = Array(PA).fill('');   // 失誤守位、當時守該位的背號、當時投手背號   // 這個打席在第幾局（按「換局」切換）   // 代跑：{ no: 代跑背號, swap: 是否換人 }
+  if (!r.fe) r.fe = Array(PA).fill(''); if (!r.fen) r.fen = Array(PA).fill(''); if (!r.pit) r.pit = Array(PA).fill(''); if (!r.dv) r.dv = Array(PA).fill(0);   // 失誤守位、當時守該位的背號、當時投手背號   // 這個打席在第幾局（按「換局」切換）   // 代跑：{ no: 代跑背號, swap: 是否換人 }
   if (r.Rx == null) { r.Rx = r.R || 0; r.RBIx = r.RBI || 0; }   // 舊版手動記的數字保留
   return r;
 }
@@ -1256,14 +1256,29 @@ const DNUM = { P: 1, C: 2, '1B': 3, '2B': 4, '3B': 5, SS: 6, LF: 7, LCF: 8, RF: 
 const DPOSL = { P: '投手', C: '捕手', '1B': '一壘', '2B': '二壘', '3B': '三壘', SS: '游擊', LF: '左外', LCF: '左中', RCF: '右中', RF: '右外' };
 const DSHORT = { P: '投', C: '捕', '1B': '一', '2B': '二', '3B': '三', SS: '游', LF: '左', LCF: '左中', RCF: '右中', RF: '右' };
 const DKEY = 'sb-def-last';
-function defOf(s) { if (!s.def) s.def = { teamId: '', team: '', pos: {}, pits: [] }; const p = partner(s); if (!s.def.teamId && p && p.teamId) { s.def.teamId = p.teamId; s.def.team = p.team; } return s.def; }
+function defOf(s) { if (!s.def) s.def = { teamId: '', team: '', pos: {}, pits: [] }; if (!s.def.hist) { s.def.hist = []; s.def.log = []; s.def.ver = 0; } const p = partner(s); if (!s.def.teamId && p && p.teamId) { s.def.teamId = p.teamId; s.def.team = p.team; } return s.def; }
 const defP = (no, d) => no && typeof RO !== 'undefined' && RO.players ? RO.players.find(x => x.teamId === d.teamId && String(x.no) === String(no)) : null;
 const defWho = (no, d) => no ? `#${no}${(defP(no, d) || {}).name ? ' ' + defP(no, d).name : ''}` : '';
+function defSnap(d) { d.ver = (d.ver || 0) + 1; d.hist.push({ ver: d.ver, pos: Object.assign({}, d.pos) }); }   // 每次守位變動存一份快照
+function posAt(d, v, pos) { let h = null; (d.hist || []).forEach(x => { if (x.ver <= v) h = x; }); return h ? h.pos[pos] || '' : d.pos[pos] || ''; }   // 第 v 版時守該位置的人
+const defStarted = () => sh().rows.some(r => r.res.some(Boolean));
+function defChange(d, pos, to) {   // 改守位背號：比賽開始後記成換人；改成別的守位上的人＝兩人互換
+  const from = d.pos[pos] || ''; if (from === to) return;
+  const other = to && DPOS.find(x => x !== pos && d.pos[x] === to), inn = sh().inning || 1, log = defStarted();
+  d.pos[pos] = to;
+  if (other) { d.pos[other] = from; if (log) d.log.push(from ? { pos, pos2: other, from: to, to: from, inn, swap: 1 } : { pos: other, from: to, to: '', inn }); toast(from ? `${DPOS_L(pos)}與${DPOS_L(other)}互換：#${to} ↔ #${from}` : `#${to} 移到${DPOS_L(pos)}，${DPOS_L(other)}空出來了，請補上`); }
+  if (log && !(other && from) && (from || other)) d.log.push({ pos, from, to, inn });
+  if (pos === 'P' && to) d.pits.push({ no: to, inn });
+  if (other === 'P' && from) d.pits.push({ no: from, inn });
+  defSnap(d);
+}
+const DPOS_L = pos => DPOSL[pos];
 function zonePos(z) { const m = String(z || '').match(/^(10|[1-9])/); if (!m) return ''; const n = +m[1]; return Object.keys(DNUM).find(k => DNUM[k] === n) || ''; }
 function defMark(row, k, code) {   // 記結果時：記下當時投手；失誤先依落點預選守位
-  prep(row); const d = defOf(sh());
-  if (!row.pit[k]) row.pit[k] = d.pos.P || '';
-  if (code === 'E') { if (!row.fe[k]) { row.fe[k] = zonePos(row.loc[k]); row.fen[k] = d.pos[row.fe[k]] || ''; } }
+  prep(row); const d = defOf(sh()); if (!d.hist.length) defSnap(d);
+  if (!row.res[k] || !row.dv[k]) row.dv[k] = d.ver;
+  if (!row.pit[k]) row.pit[k] = posAt(d, row.dv[k], 'P');
+  if (code === 'E') { if (!row.fe[k]) { row.fe[k] = zonePos(row.loc[k]); row.fen[k] = posAt(d, row.dv[k], row.fe[k]); } }
   else { row.fe[k] = ''; row.fen[k] = ''; }
 }
 function defPanel(bat, k) {
@@ -1271,7 +1286,7 @@ function defPanel(bat, k) {
   if (res !== 'E' && res !== 'BB') return '';
   const need = set ? '' : ` <button type="button" class="chip" data-def="1">先設定守備名單</button>`;
   if (res === 'BB') return `<div class="rw"><b>投手</b>${bat.pit[k] ? esc(defWho(bat.pit[k], d)) : '<small style="color:var(--muted)">（未設定）</small>'}${need}<small style="color:var(--muted)">換投請按上方「🧤 守備」</small></div>`;
-  return `<div class="rw"><b>誰失誤</b>${DPOS.map(pos => `<button type="button" class="chip fe${bat.fe[k] === pos ? ' sel' : ''}" data-fe="${pos}">${DPOSL[pos]}${d.pos[pos] ? `<small>#${esc(d.pos[pos])}</small>` : ''}</button>`).join('')}${need}<small style="color:var(--muted)">已依落點預選，不對就點正確位置</small></div>`;
+  return `<div class="rw"><b>誰失誤</b>${DPOS.map(pos => `<button type="button" class="chip fe${bat.fe[k] === pos ? ' sel' : ''}" data-fe="${pos}">${DPOSL[pos]}${(bat.dv[k] ? posAt(d, bat.dv[k], pos) : d.pos[pos]) ? `<small>#${esc(bat.dv[k] ? posAt(d, bat.dv[k], pos) : d.pos[pos])}</small>` : ''}</button>`).join('')}${need}<small style="color:var(--muted)">已依落點預選，不對就點正確位置</small></div>`;
 }
 function renderDefBtn() { const d = defOf(sh()); $('defbtn').textContent = d.pos.P ? `🧤 投手 #${d.pos.P}` : '🧤 守備'; }
 function defStatHTML(d) {   // 本場（這張表）防守方：失誤與投手
@@ -1289,7 +1304,7 @@ function renderDef() {
   $('def-bat').textContent = s.team || '（未填隊伍）';
   $('def-team').innerHTML = '<option value="">— 選防守的球隊 —</option>' + (RO.teams || []).map(t => `<option value="${t.id}"${t.id === d.teamId ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
   $('def-grid').innerHTML = DPOS.map(pos => `<label class="drow${pos === 'P' ? ' p' : ''}"><b>${DPOSL[pos]}</b><input data-pos="${pos}" inputmode="numeric" value="${esc(d.pos[pos] || '')}" placeholder="背號"><span>${esc((defP(d.pos[pos], d) || {}).name || '')}</span></label>`).join('');
-  $('def-pits').innerHTML = d.pits.length ? '投手紀錄：' + d.pits.map(x => `${esc(defWho(x.no, d))}（第 ${x.inn} 局起）`).join(' → ') : '';
+  $('def-pits').innerHTML = d.log.length ? '<b style="color:var(--ink)">換人紀錄</b><br>' + d.log.map(x => x.swap ? `第 ${x.inn} 局　${DPOSL[x.pos]} ↔ ${DPOSL[x.pos2]} 互換：${esc(defWho(x.from, d))} 到${DPOSL[x.pos]}、${esc(defWho(x.to, d))} 到${DPOSL[x.pos2]}` : `第 ${x.inn} 局　${DPOSL[x.pos]}：${x.from ? esc(defWho(x.from, d)) : '（空）'} → ${x.to ? esc(defWho(x.to, d)) : '（空）'}`).join('<br>') : (defStarted() ? '<span>比賽中直接改守位背號＝換人，會記下局數；把背號改成別的守位上的人＝兩人互換</span>' : '');
   let last = null; try { last = JSON.parse(localStorage.getItem(DKEY) || 'null'); } catch (_) {}
   $('def-last').disabled = !(last && last[d.teamId || d.team]);
   $('def-stat').innerHTML = defStatHTML(d);
@@ -1299,12 +1314,10 @@ function defSaveLast() { const d = defOf(sh()); try { const m = JSON.parse(local
 $('defbtn').onclick = openDef;
 $('def-team').onchange = e => { const d = defOf(sh()); d.teamId = e.target.value; d.team = ((RO.teams || []).find(t => t.id === d.teamId) || {}).name || ''; save(); renderDef(); };
 $('def-grid').addEventListener('change', e => { const pos = e.target.dataset.pos; if (!pos) return; const d = defOf(sh()), v = e.target.value.trim();
-  const dup = v && DPOS.find(x => x !== pos && d.pos[x] === v); if (dup) toast(`#${v} 已經在${DPOSL[dup]}，請確認`);
-  if (pos === 'P' && v && v !== d.pos.P) d.pits.push({ no: v, inn: sh().inning || 1 });
-  d.pos[pos] = v; save(); renderDef(); renderDefBtn(); });
-$('def-last').onclick = () => { const d = defOf(sh()); try { const m = JSON.parse(localStorage.getItem(DKEY) || '{}'); const pos = m[d.teamId || d.team]; if (!pos) return; d.pos = Object.assign({}, pos); d.pits = pos.P ? [{ no: pos.P, inn: sh().inning || 1 }] : []; save(); renderDef(); renderDefBtn(); toast('已帶入上一場的守位，有變動直接改'); } catch (_) {} };
+  defChange(d, pos, v); save(); renderDef(); renderDefBtn(); });
+$('def-last').onclick = () => { const d = defOf(sh()); try { const m = JSON.parse(localStorage.getItem(DKEY) || '{}'); const pos = m[d.teamId || d.team]; if (!pos) return; d.pos = Object.assign({}, pos); d.pits = pos.P ? [{ no: pos.P, inn: sh().inning || 1 }] : []; defSnap(d); save(); renderDef(); renderDefBtn(); toast('已帶入上一場的守位，有變動直接改'); } catch (_) {} };
 $('def-swap').onclick = () => { const v = $('def-newp').value.trim(), d = defOf(sh()); if (!v) { toast('請輸入新投手背號'); return; } if (v === d.pos.P) { toast(`#${v} 已經是投手`); return; }
-  const old = d.pos.P; d.pos.P = v; d.pits.push({ no: v, inn: sh().inning || 1 }); $('def-newp').value = ''; save(); renderDef(); renderDefBtn(); toast(`第 ${sh().inning || 1} 局起由 ${defWho(v, d)} 投球${old ? `（換下 #${old}）` : ''}`); };
+  const old = d.pos.P; defChange(d, 'P', v); $('def-newp').value = ''; save(); renderDef(); renderDefBtn(); toast(`第 ${sh().inning || 1} 局起由 ${defWho(v, d)} 投球${old ? `（換下 #${old}）` : ''}`); };
 $('def-ok').onclick = () => { defSaveLast(); $('dlg-def').close(); render(); };
 
 function renderStat() {
@@ -1323,7 +1336,7 @@ function renderStat() {
 $('statp').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.run) { const [r, k] = b.dataset.run.split(':').map(Number); toggleRun(r, k); }
-  else if (b.dataset.fe) { const c = cur(), bat = sh().rows[c.r]; snap(); bat.fe[c.c] = b.dataset.fe; bat.fen[c.c] = defOf(sh()).pos[b.dataset.fe] || ''; save(); render(); }
+  else if (b.dataset.fe) { const c = cur(), bat = sh().rows[c.r]; snap(); const d = defOf(sh()); bat.fe[c.c] = b.dataset.fe; bat.fen[c.c] = bat.dv[c.c] ? posAt(d, bat.dv[c.c], b.dataset.fe) : (d.pos[b.dataset.fe] || ''); save(); render(); }
   else if (b.dataset.def) openDef();
   else if (b.dataset.rbi) { const c = cur(), bat = sh().rows[c.r]; snap(); bat.rbi[c.c] = Math.max(0, (bat.rbi[c.c] || 0) + +b.dataset.rbi); save(); render(); }
 });
