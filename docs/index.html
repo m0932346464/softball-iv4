@@ -737,6 +737,7 @@ if ('serviceWorker' in navigator) {
         <select id="scope" aria-label="落點顯示範圍">
           <option value="batterHist">選定球員・歷屆＋本場</option>
           <option value="batterGame">選定球員・本場</option>
+          <option value="batterErr">選定球員・守備失誤落點</option>
           <option value="teamHist">全隊・歷屆＋本場</option>
           <option value="team">全隊・本屆</option>
           <option value="game">全隊・本場</option>
@@ -1053,8 +1054,8 @@ async function loadHistory() {
   const key = U.tid + '|' + tn + '|' + [...names].join(',');
   if (key === histKey) { renderData(); return; }
   if (tn === '—' || !D.tournaments.length) return;   // 球隊或賽事清單還沒載入：等載入後再抓
-  histKey = key; D.histBalls = []; D.histAll = [];
-  const out = [];
+  histKey = key; D.histBalls = []; D.histAll = []; D.defAll = [];
+  const out = [], outDef = [];
   for (const t of D.tournaments) {
     try {
       const all = (await col(t.id, 'teams').get()).docs, ts = all.filter(d => [...aliasSet(d.data())].some(n => names.has(n)));
@@ -1064,10 +1065,15 @@ async function loadHistory() {
         const bs = await col(t.id, 'balls').where('teamId', '==', td.id).get();
         bs.docs.forEach(d => { const b = d.data(), g = gm[b.gameId], dt = g && tpe(g.scheduledAt), opp = g && (g.awayId === td.id ? g.homeId : g.awayId);
           out.push({ id: d.id, tid: t.id, tname: t.name, ...b, glabel: g ? `${g.gameNo ? '#' + g.gameNo + ' ' : ''}vs ${tnm[opp] || '—'}${dt ? ` ${dt.m}/${dt.d}` : ''}` : '', gsort: g && g.scheduledAt ? g.scheduledAt.seconds : 0 }); });
+        try {   // 守備：這隊防守時（對手打擊）的打席，有記失誤守備員或投手
+          const ds = await col(t.id, 'balls').where('defTeamId', '==', td.id).get(), gm2 = t.id === U.tid ? Object.fromEntries(D.games.map(g => [g.id, g])) : gm;
+          ds.docs.forEach(d => { const b = d.data(), g = gm2[b.gameId], dt = g && tpe(g.scheduledAt);
+            outDef.push({ id: d.id, tid: t.id, tname: t.name, ...b, glabel: g ? `${g.gameNo ? '#' + g.gameNo + ' ' : ''}vs ${tnm[b.teamId] || '—'}${dt ? ` ${dt.m}/${dt.d}` : ''}` : '', gsort: g && g.scheduledAt ? g.scheduledAt.seconds : 0 }); });
+        } catch (_) {}
       }
     } catch (e) { /* 無權限或無資料時略過 */ }
   }
-  if (histKey === key) { D.histAll = out; applyHN(); renderData(); }
+  if (histKey === key) { D.histAll = out; D.defAll = outDef; applyHN(); renderData(); }
 }
 function setSync(st) { $('sync').className = 'sync' + (st === 'ok' ? '' : ' ' + st); $('sync-txt').textContent = st === 'off' ? '離線（暫存在裝置）' : st === 'pending' ? '上傳中…' : '已同步'; }
 addEventListener('online', () => setSync(D.pendingWrites ? 'pending' : 'ok'));
@@ -1238,6 +1244,7 @@ function scopeBalls() {
     case 'teamHist': return D.histBalls.filter(b => b.gameId !== U.gid).concat(D.gameBalls.filter(b => b.teamId === tm));
     case 'batterGame': return D.gameBalls.filter(b => b.batterId === bid);
     case 'batterHist': return batterBalls();
+    case 'batterErr': return errBalls(bp, tm);
     default: return D.gameBalls.filter(b => b.teamId === tm);
   }
 }
@@ -1371,7 +1378,7 @@ function renderScout() {
   const tile = (k, v) => `<div class="tl"><span>${k}</span><b>${v}</b></div>`;
   $('sc-stats').innerHTML = `<div class="tiles">${tile('打席', La.pa)}${tile('打擊率', La.ab ? f3(La.avg) : '—')}${tile('OPS', La.ab ? f3(La.ops) : '—')}${tile('打點', rbi(al))}</div>
     <div class="st-grp"><b>打席結果（合計 ${La.pa} 席）</b><div class="lg"><span><i class="h"></i>歷屆 ${Lh.pa}</span><span><i class="g"></i>本場 ${Lg.pa}${inG ? '' : '（未出賽）'}${le ? '・即時回報' : ''}</span></div>${cnt.map(cBar).join('')}</div>
-    <div class="st-grp"><b>擊球型態</b><small>有落點 ${locd.length} 球（合計）</small>${bar('滾地', tc('G'), locd.length)}${bar('平飛', tc('L'), locd.length)}${bar('高飛', tc('F') + tc('P'), locd.length)}</div>`;
+    <div class="st-grp"><b>擊球型態</b><small>有落點 ${locd.length} 球（合計）</small>${bar('滾地', tc('G'), locd.length)}${bar('平飛', tc('L'), locd.length)}${bar('高飛', tc('F') + tc('P'), locd.length)}</div>${defHTML(p, tm)}`;
   /* 逐場紀錄 */
   const byG = {}; al.forEach(b => { const k = b.gameId || U.gid; (byG[k] = byG[k] || { id: k, t: 0, bs: [], tname: b.tname || '', glabel: b.glabel || '' }).bs.push(b); byG[k].t = Math.max(byG[k].t, b.gsort || tsv(b) || 0); });
   const gl = Object.values(byG).sort((a, b) => (b.id === U.gid) - (a.id === U.gid) || b.t - a.t);
@@ -1379,6 +1386,31 @@ function renderScout() {
   $('sc-card').innerHTML = (U.solo ? `<div class="solo-bar">由打擊落點紀錄連結：只顯示這位打者<button class="ghost sm" type="button" id="solo-off">顯示全隊</button></div>` : '') + `<div class="sc-h"><b style="font-size:14px">逐場紀錄</b><span class="note">${gl.length} 場・最新在前</span></div>
     ${gl.length ? gl.map((x, gi) => { const r = line(x.bs); return `<div class="sc-pa" data-gi="${gi}"><span class="lbl"><b style="color:var(--ink)">${gName(x)}</b>　${r.ab} 打數 ${r.h} 安${r.HR ? ` ${r.HR} 轟` : ''}${rbi(x.bs) ? ` ${rbi(x.bs)} 打點` : ''}</span>${[...x.bs].sort(byTime).map(chipB).join('')}</div>`; }).join('') + '<p class="note gm-more" hidden style="margin:0;font-size:12px"></p>' : `<div class="sc-pa"><span>${inG ? '本場尚無打席資料' : '尚無出賽紀錄'}</span></div>`}`;
   requestAnimationFrame(fitGames);
+}
+/* 防守（模擬）：這位球員守備時的失誤、擔任投手時的對戰數據；資料來自對手打擊的紀錄表（有填守備名單） */
+const DPOSL = { P: '投手', C: '捕手', '1B': '一壘', '2B': '二壘', '3B': '三壘', SS: '游擊', LF: '左外', LCF: '左中', RCF: '右中', RF: '右外' };
+function defPool(tm) { return (D.defAll || []).filter(b => b.gameId !== U.gid).concat(D.gameBalls.filter(b => b.defTeamId === tm)); }
+const errOf = (p, b) => b.result === 'E' && (b.errId === p.id || (b.errName && b.errName === p.name));
+function errBalls(p, tm) { return p ? defPool(tm).filter(b => errOf(p, b)) : []; }
+function defHTML(p, tm) {
+  const all = defPool(tm);
+  const cur = b => b.gameId === U.gid;
+  const mineE = b => errOf(p, b), mineP = b => b.pitcherId === p.id || (b.pitName && b.pitName === p.name);
+  const E = all.filter(mineE).sort((a, b) => (b.gsort || tsv(b)) - (a.gsort || tsv(a))), Pb = all.filter(mineP);
+  const seen = all.length > 0;
+  const byPos = {}; E.forEach(b => byPos[b.errPos] = (byPos[b.errPos] || 0) + 1);
+  const eg = E.filter(cur).length;
+  let h = `<div class="st-grp"><b>防守失誤</b><small>${seen ? `合計 ${E.length} 次（本場 ${eg}・歷屆 ${E.length - eg}）` : '還沒有守備紀錄'}</small>`;
+  if (!seen) h += `<p class="note" style="margin:4px 0 0;font-size:12px">對手打擊的紀錄表填了「🧤 守備」名單並上傳匯入後，這裡會出現個人失誤與投手數據</p>`;
+  else if (!E.length) h += `<p class="note" style="margin:4px 0 0;font-size:12px">沒有失誤紀錄 👍</p>`;
+  else h += `<button type="button" class="ghost sm" id="err-map" style="margin:4px 0">${U.scope === 'batterErr' ? '✓ 球場圖顯示失誤落點中（切回打擊）' : '在球場圖看失誤落點'}</button><div class="lg" style="flex-wrap:wrap">${Object.entries(byPos).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span>${DPOSL[k] || '未指定'} ${n}</span>`).join('')}</div>
+    <div style="display:flex;flex-direction:column;gap:2px;margin-top:4px;font-size:12px">${E.slice(0, 6).map(b => `<span>${cur(b) ? '<b>本場</b>' : esc(b.glabel || b.tname || '')}　${b.inning || ''} 局　${DPOSL[b.errPos] || ''}${b.zone ? '・落點 ' + esc(b.zone) : ''}　打者 #${esc(b.batterNo || '')}</span>`).join('')}${E.length > 6 ? `<span class="note">另有 ${E.length - 6} 次</span>` : ''}</div>`;
+  h += '</div>';
+  if (Pb.length) {
+    const c = k => Pb.filter(b => b.result === k).length, hit = Pb.filter(b => ['1B', '2B', '3B', 'HR'].includes(b.result)).length, g = Pb.filter(cur).length;
+    h += `<div class="st-grp"><b>投手</b><small>面對 ${Pb.length} 打席（本場 ${g}・歷屆 ${Pb.length - g}）</small><div class="tiles" style="margin-top:6px">${[['保送', c('BB')], ['三振', c('K')], ['被安打', hit], ['失誤上壘', c('E')]].map(([k, v]) => `<div class="tl"><span>${k}</span><b>${v}</b></div>`).join('')}</div></div>`;
+  }
+  return h;
 }
 /* 逐場紀錄：只保留畫面放得下的場次（最新在前），其餘不顯示，避免右欄捲動 */
 function fitGames() {
@@ -1393,6 +1425,7 @@ function fitGames() {
   if (more) { more.hidden = n === bl.length; more.textContent = `另有 ${bl.length - n} 場較早的紀錄未顯示`; }
 }
 addEventListener('resize', () => requestAnimationFrame(fitGames));
+document.addEventListener('click', e => { if (e.target.id !== 'err-map') return; U.scope = U.scope === 'batterErr' ? 'batterHist' : 'batterErr'; saveU(); renderControls(); renderData(); });
 document.addEventListener('click', e => { if (e.target.id !== 'solo-off') return; U.solo = ''; saveU(); applyFit(); renderData(); });
 $('sc-q').addEventListener('input', e => { U.scq = e.target.value; saveU(); renderScout(); });
 $('sc-list').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (!b) return; { const pp = pById(b.dataset.p); if (pp && pp.teamId !== batTeamId()) { goPlayer(pp); return; } } U.pick = b.dataset.p; if (!U.scope.startsWith('batter')) U.scope = 'batterHist'; saveU(); renderControls(); subscribeScope(); });
