@@ -880,7 +880,9 @@ function renderImportDetail() {
 async function doImport(u, P) {
   const g = D.games.find(x => x.id === u.gameId); if (!g) return;
   const { idOf } = impCtx(u), uid = FB.auth.currentUser.uid;
-  const balls = sheetToBalls(P, { gameId: u.gameId, teamId: u.teamId, side: u.side, idOf, player: id => D.players.find(p => p.id === id), uid, uploadId: u.id });
+  const defTeamId = (P.def && P.def.teamId) || (u.side === 'away' ? g.homeId : g.awayId), droster = D.players.filter(p => p.teamId === defTeamId);
+  const defIdOf = no => { const c = droster.filter(p => String(p.no) === String(no)); return c.length === 1 ? c[0].id : ''; };
+  const balls = sheetToBalls(P, { gameId: u.gameId, teamId: u.teamId, side: u.side, idOf, player: id => D.players.find(p => p.id === id), uid, uploadId: u.id, defTeamId, defIdOf });
   const old = D.balls.filter(b => b.gameId === u.gameId && b.teamId === u.teamId);
   try {
     $('shi-go').disabled = true; toast('匯入中…');

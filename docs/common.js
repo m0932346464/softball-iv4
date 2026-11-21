@@ -367,9 +367,16 @@ function sheetToBalls(P, ctx) {
       side: p && p.bats && p.bats !== 'S' ? p.bats : 'R', inning: pa.inn || 1, half: ctx.side === 'away' ? 'top' : 'bottom',
       result: res, type: sheetType(pa.res, pos), x: noLoc ? 0 : pos.x, y: noLoc ? 0 : pos.y, zone: noLoc ? '' : pa.zone, noLoc,
       slot: pa.slot || null, paper: { res: pa.res, zone: pa.zone || '', round: pa.round, pr: pa.pr || null },
-      source: 'sheet', uploadId: ctx.uploadId || '', createdBy: ctx.uid, at: base + i, run
+      source: 'sheet', uploadId: ctx.uploadId || '', createdBy: ctx.uid, at: base + i, run,
+      ...sheetDef(pa, ctx)
     };
   });
+}
+/* 守備・投手：防守方球隊、失誤守位與守備員、當時投手（背號 → 防守方名單上的球員） */
+function sheetDef(pa, ctx) {
+  const dId = no => no && ctx.defIdOf ? ctx.defIdOf(no) : '', dName = id => (id && ctx.player(id) || {}).name || '';
+  const eId = pa.fe ? dId(pa.feNo) : '', pId = dId(pa.pitNo);
+  return { defTeamId: ctx.defTeamId || '', errPos: pa.fe || '', errNo: pa.fe ? String(pa.feNo || '') : '', errId: eId, errName: dName(eId), pitNo: String(pa.pitNo || ''), pitcherId: pId, pitName: dName(pId) };
 }
 /* 由 payload 建立打序（{pos, players:[{id, from}]}；from 用該員第一個打席的局數） */
 function sheetLineup(P, idOf) {
