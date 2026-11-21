@@ -34,7 +34,7 @@ input{font:inherit;color:inherit}
 .app{min-height:100%;display:flex;flex-direction:column;padding-left:max(10px,env(safe-area-inset-left,0px));padding-right:max(10px,env(safe-area-inset-right,0px));padding-block:8px 10px;gap:8px}
 /* top bar */
 .bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.bar h1{margin:0;font-size:17px;font-weight:900;white-space:nowrap}
+.bar h1{margin:0;font-size:17px;font-weight:900;white-space:nowrap;display:none}   /* 工具列放不下：頁名改由瀏覽器分頁標題顯示 */
 .bar h1 small{font:600 12px var(--display);letter-spacing:.08em;color:var(--muted);margin-left:6px}
 .sp{flex:1}
 .btn{border:1px solid var(--rule);background:var(--surface);border-radius:8px;padding:5px 10px;font-size:13px;white-space:nowrap}
@@ -340,8 +340,8 @@ if ('serviceWorker' in navigator) {
     <button type="button" class="btn" id="sheets" aria-label="切換紀錄表" style="min-width:150px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left"></button>
     <button class="btn" id="new">＋ 新紀錄表</button>
     <span class="innctl" title="三人出局自動換局；也可以手動按「換局」">第 <b id="inn-n">1</b> 局<span id="inn-h" class="ih" hidden></span><span class="outs" id="outs" title="點圓點可修正出局數"></span><button type="button" id="inn-dn" aria-label="上一局">−</button><button type="button" id="inn-up">換局 ▶</button></span>
-    <button class="btn" id="clockbtn">⏱ 開賽計時</button>
-    <button class="btn" id="endbtn" title="時間到、打完 7 局或提前結束時，由紀錄員確認比賽結束">🏁 比賽結束</button>
+    <button class="btn" id="clockbtn" title="開始比賽時間倒數">⏱ 計時</button>
+    <button class="btn" id="endbtn" title="時間到、打完 7 局或提前結束時，由紀錄員確認比賽結束">🏁 結束</button>
     <button class="btn" id="defbtn" title="防守方守位與投手：失誤記到守備員、保送記到投手">🧤 守備</button>
     <span class="sp"></span>
     <button class="btn" id="undo" title="復原上一個動作">↶ 復原</button>
@@ -771,7 +771,7 @@ function render() {
   renderStat();
   ['team', 'field', 'weather', 'wind', 'date', 'time'].forEach(k => { const el = $('h-' + k); if (document.activeElement !== el) el.value = s[k] || ''; });
   teamBadge();   // 切換紀錄表或建立新比賽後，名單人數要跟著換成這一隊
-  { const e = endedOf(s), eb = $('endbtn'); eb.textContent = e ? '🏁 已結束' : '🏁 比賽結束'; eb.className = 'btn' + (e ? ' ended' : ''); document.querySelector('.app').classList.toggle('ended', !!e && !s.rows[c.r].res[c.c]);
+  { const e = endedOf(s), eb = $('endbtn'); eb.textContent = e ? '🏁 已結束' : '🏁 結束'; eb.className = 'btn' + (e ? ' ended' : ''); document.querySelector('.app').classList.toggle('ended', !!e && !s.rows[c.r].res[c.c]);
     if (e && !s.rows[c.r].res[c.c]) { $('hint').innerHTML = `<span class="waitmsg">🏁 比賽已結束（${esc(END_REASONS[e.reason] || '')}）：只能查看或修改已記的格子；改過的話按「☁ 重新上傳」</span>`; $('pq').hidden = true; } }
   if (typeof tickClock === 'function') { tickClock(); setTimeout(checkWalkoff, 0); }
   if (typeof renderUpState === 'function') renderUpState();
@@ -787,7 +787,7 @@ function render() {
     else if (s.upload) { t = '☁ 重新上傳'; on = true; cls = 'redo'; tip = '上傳後又改過紀錄表，按這裡把新版送給管理員'; }
     else if (!s.link) { t = '☁ 上傳'; on = any; tip = '這張紀錄表沒有連結場次，請手動選場次上傳'; }
     else if (e) { t = '☁ 待上傳'; on = true; cls = 'redo'; tip = '比賽已結束但還沒送出（可能沒網路或未登入），恢復後自動上傳；也可以按這裡手動上傳'; }
-    else { t = '☁ 賽後自動上傳'; on = false; cls = 'auto'; tip = '比賽中打席已即時回報到後台資訊中控；按「🏁 比賽結束」確認後會自動上傳兩隊紀錄表'; }
+    else { t = '☁ 自動上傳'; on = false; cls = 'auto'; tip = '比賽中打席已即時回報到後台資訊中控；按「🏁 比賽結束」確認後會自動上傳兩隊紀錄表'; }
     b.textContent = t; b.disabled = !on; b.title = tip; b.classList.toggle('done', cls === 'done'); b.classList.toggle('redo', cls === 'redo'); b.classList.toggle('auto', cls === 'auto'); }
   markZone(row.loc[c.c]);
   const tdOn = $('sheet').querySelector('td.on'); if (tdOn) tdOn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -1480,7 +1480,7 @@ function toastMid(m, ms) { const t = $('toast'); t.textContent = m; t.classList.
 function tickClock() {
   const s = sh(), c = clockOf(s), b = $('clockbtn'); if (!b) return;
   const ended = endedOf(s);
-  if (!c) { b.className = 'btn'; b.textContent = '⏱ 開賽計時'; b.title = '開始比賽時間倒數'; return; }
+  if (!c) { b.className = 'btn'; b.textContent = '⏱ 計時'; b.title = '開始比賽時間倒數'; return; }
   const left = c.mins * 60 - (Date.now() - c.start) / 1000, el = elapsedMin(c);
   if (ended) { b.className = 'btn'; b.textContent = `⏱ 比賽用時 ${mmss(Math.max(0, ((ended.at || Date.now()) - c.start) / 1000))}`; return; }
   b.className = 'btn clock ' + (left <= 0 ? 'over' : el >= c.noNew ? 'warn' : '');
