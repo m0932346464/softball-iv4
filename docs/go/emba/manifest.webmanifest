@@ -1,0 +1,13 @@
+{
+  "name": "EMBA 慢壘成績",
+  "short_name": "EMBA慢壘成績",
+  "start_url": "./?app",
+  "display": "standalone",
+  "theme_color": "#14305E",
+  "background_color": "#F3F4F7",
+  "icons": [
+    { "src": "icon-192-v2.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512-v2.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "maskable-512-v2.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

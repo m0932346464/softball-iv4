@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>EMBA 慢壘成績</title>
+<meta name="apple-mobile-web-app-title" content="EMBA慢壘成績">
+<meta name="application-name" content="EMBA慢壘成績">
+<meta name="theme-color" content="#14305E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="apple-touch-icon-v2.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192-v2.png">
+<link rel="manifest" href="manifest.webmanifest">
+<script>
+  var TARGET = "https://emba-softball.netlify.app/";
+  // 主畫面按鈕存的是 ?app → 直接跳到系統；一般連結先顯示設定說明，並把網址換成 ?app 供「加入主畫面」使用
+  if (location.search === "?app") {
+    location.replace(TARGET);
+  } else {
+    history.replaceState(null, "", location.pathname + "?app");
+  }
+</script>
+<style>
+  body{margin:0;font:16px/1.6 -apple-system,"PingFang TC","Noto Sans TC",sans-serif;background:#F3F4F7;color:#1D2433;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}
+  .box{max-width:380px;text-align:center}
+  img{width:96px;height:96px;border-radius:22px;box-shadow:0 4px 14px rgba(0,0,0,.15)}
+  h1{font-size:22px;margin:16px 0 8px}
+  ol{text-align:left;background:#fff;border-radius:12px;padding:14px 14px 14px 34px;margin:16px 0}
+  a.btn{display:block;background:#14305E;color:#fff;text-decoration:none;font-weight:700;padding:14px;border-radius:12px}
+</style>
+</head>
+<body>
+<div class="box">
+  <img src="apple-touch-icon-v2.png" alt="">
+  <h1>EMBA 慢壘成績</h1>
+  <p>把這頁加到手機主畫面，之後點按鈕就會直接開啟系統。</p>
+  <ol>
+    <li>iPhone：按 Safari 下方「分享」→「加入主畫面」</li>
+    <li>Android：按 Chrome 右上角「⋮」→「加到主畫面」</li>
+  </ol>
+  <a class="btn" href="https://emba-softball.netlify.app/">直接開啟 →</a>
+</div>
+</body>
+</html>
