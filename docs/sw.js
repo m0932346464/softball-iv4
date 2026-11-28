@@ -3,7 +3,7 @@
    - CSS / JS / 圖示 / Firebase 程式庫 / 字型：先用手機上的，背景再更新
    - Firestore、登入等資料請求不經過這裡，由 Firebase 自己的離線暫存處理
    改版時把 VERSION 加一，舊快取會自動清掉。 */
-const VERSION = 'v7';
+const VERSION = 'v8';
 const CACHE = 'softball-' + VERSION;
 const BASE = new URL('./', self.location).href;
 const abs = (p) => new URL(p, BASE).href;
@@ -11,7 +11,7 @@ const abs = (p) => new URL(p, BASE).href;
 const PAGES = ['index.html', 'score.html', 'sheet.html', 'admin.html', 'signup.html', 'standings.html'];
 const ASSETS = [
   'common.css', 'common.js', 'config.js', 'icon.svg', 'manifest.webmanifest',
-  'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png'
+  'icons/icon-192-v2.png', 'icons/icon-512-v2.png', 'icons/maskable-512-v2.png', 'icons/apple-touch-icon-v2.png'
 ];
 const CDN = [
   'https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-app-compat.js',
